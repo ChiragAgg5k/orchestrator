@@ -53,7 +53,7 @@ kubectl -n orchestrator port-forward svc/orchestrator-jobs 8080:8080 &
 curl localhost:8080/readyz
 ```
 
-To require authentication, put the key in a Secret and name it in `<plane>.auth.existingSecret` (key `<plane>.auth.secretKey`, default `api-key`); the chart mounts it and points `API_KEY_FILE` at it. Requests then need `Authorization: Bearer <key>`. **With no key configured, the API is open** — the services log a warning at startup.
+To require authentication, put the key in a Secret and name it in `<plane>.auth.existingSecret` (key `<plane>.auth.secretKey`, default `api-key`); the chart mounts it and points `API_KEY_FILE` at it. Requests then need `Authorization: Bearer <key>`. A key file that cannot be read or is empty stops the service at startup. On Kubernetes, **with no key configured, the API is open** — the services log a warning at startup. The Docker backend refuses to start without a key (`API_KEY_FILE` or `API_KEY`) unless `ALLOW_UNAUTHENTICATED=true` is set (the local `docker-compose.yaml` profile does).
 
 ## The values shape
 
