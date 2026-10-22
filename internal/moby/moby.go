@@ -15,6 +15,7 @@ import (
 	"orchestrator/internal/apperrors"
 	"orchestrator/internal/volume"
 
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
@@ -81,4 +82,26 @@ func NetworkingConfig(name string) *network.NetworkingConfig {
 	return &network.NetworkingConfig{
 		EndpointsConfig: map[string]*network.EndpointSettings{name: {}},
 	}
+}
+
+// WorkloadSecurity is the Docker counterpart of kube.WorkloadSecurityContext,
+// for a container running the user's own command (a build, a deployment, a
+// sandbox): it keeps the image's user and a writable filesystem, since
+// installers run as root and write everywhere, but drops CAP_NET_RAW — on a
+// shared bridge a raw socket reaches neighbouring containers' traffic — and
+// forbids gaining privileges through setuid binaries. The daemon applies its
+// default seccomp profile on its own.
+func WorkloadSecurity(hc *container.HostConfig) {
+	hc.CapDrop = append(hc.CapDrop, "NET_RAW")
+	hc.SecurityOpt = append(hc.SecurityOpt, "no-new-privileges")
+}
+
+// FileAccessSecurity is the Docker counterpart of
+// kube.FileAccessSecurityContext, for the artifact sidecar: root with only the
+// capabilities needed to read, write and re-own files of any owner or mode in
+// the shared workspace, and no privilege gain.
+func FileAccessSecurity(hc *container.HostConfig) {
+	hc.CapDrop = append(hc.CapDrop, "ALL")
+	hc.CapAdd = append(hc.CapAdd, "CHOWN", "DAC_OVERRIDE", "FOWNER")
+	hc.SecurityOpt = append(hc.SecurityOpt, "no-new-privileges")
 }

@@ -338,6 +338,21 @@ func (o *Orchestrator) installAgent(ctx, pullCtx context.Context, id string) err
 
 // startWorker runs the pool's image with the sandbox's command, returning the
 // container's address on the configured network.
+// workerHostConfig is a sandbox worker's host configuration: its mounts, CPU
+// and memory, under the workload hardening every user command runs with.
+func workerHostConfig(mounts []mount.Mount, cpu float64, memory int, extraHosts []string) *container.HostConfig {
+	hc := &container.HostConfig{
+		Mounts: mounts,
+		Resources: container.Resources{
+			NanoCPUs: int64(cpu * 1e9),
+			Memory:   int64(memory) * 1024 * 1024,
+		},
+		ExtraHosts: extraHosts,
+	}
+	moby.WorkloadSecurity(hc)
+	return hc
+}
+
 func (o *Orchestrator) startWorker(ctx context.Context, p *pool.Spec, req *sandbox.Request) (string, error) {
 	// The agent's own settings first, so a pool or request can override them.
 	env := []string{
@@ -371,12 +386,7 @@ func (o *Orchestrator) startWorker(ctx context.Context, p *pool.Spec, req *sandb
 			WorkingDir: workspacePath,
 			Labels:     containerLabels(req.ID, typeWorker),
 		},
-		HostConfig: &container.HostConfig{
-			Mounts:     append([]mount.Mount{o.workspaceMount(req.ID)}, volumeMounts...),
-			NanoCPUs:   int64(p.CPU * 1e9),
-			Memory:     int64(p.Memory) * 1024 * 1024,
-			ExtraHosts: o.cfg.ExtraHosts,
-		},
+		HostConfig:       workerHostConfig(append([]mount.Mount{o.workspaceMount(req.ID)}, volumeMounts...), p.CPU, p.Memory, o.cfg.ExtraHosts),
 		NetworkingConfig: moby.NetworkingConfig(o.cfg.Network),
 		Name:             workerName(req.ID),
 	})
