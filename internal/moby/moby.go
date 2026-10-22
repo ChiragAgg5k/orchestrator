@@ -11,25 +11,50 @@ package moby
 
 import (
 	"context"
+	"fmt"
+	"orchestrator/internal/apperrors"
 	"orchestrator/internal/volume"
 
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
 	"github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/versions"
 )
+
+// SubpathMinAPIVersion is the first Engine API version that honours a volume
+// mount's Subpath (Docker Engine 26). Older daemons drop the field without an
+// error and mount the whole volume.
+const SubpathMinAPIVersion = "1.45"
+
+// Pinger is the part of the Docker client Mounts needs: the daemon's API version.
+type Pinger interface {
+	Ping(ctx context.Context, options client.PingOptions) (client.PingResult, error)
+}
 
 // Mounts translates declared volumes into Docker mounts. The Kubernetes
 // counterpart is kube.PersistentVolumes.
-func Mounts(vols []volume.Volume) []mount.Mount {
+//
+// A volume with a subPath is refused when the daemon speaks an API older than
+// SubpathMinAPIVersion: it would ignore the subPath and give the container the
+// whole volume, which is wider than anything the request asked for.
+func Mounts(ctx context.Context, cli Pinger, vols []volume.Volume) ([]mount.Mount, error) {
 	mounts := make([]mount.Mount, 0, len(vols))
-	for _, v := range vols {
+	for i, v := range vols {
 		m := mount.Mount{Type: mount.TypeVolume, Source: v.Source, Target: v.Path, ReadOnly: v.ReadOnly}
 		if v.SubPath != "" {
+			ping, err := cli.Ping(ctx, client.PingOptions{})
+			if err != nil {
+				return nil, apperrors.Internal("docker.ping", err)
+			}
+			if apiVersion := ping.APIVersion; versions.LessThan(apiVersion, SubpathMinAPIVersion) {
+				return nil, apperrors.Validation(fmt.Sprintf("volumes[%d].subPath", i),
+					fmt.Sprintf("subPath needs Docker Engine API %s or newer (Docker 26+); this daemon speaks %s and would mount the whole volume", SubpathMinAPIVersion, apiVersion))
+			}
 			m.VolumeOptions = &mount.VolumeOptions{Subpath: v.SubPath}
 		}
 		mounts = append(mounts, m)
 	}
-	return mounts
+	return mounts, nil
 }
 
 // PullImage makes sure an image is present locally, pulling it if it is not. A

@@ -269,6 +269,10 @@ func (o *Orchestrator) startWorker(ctx context.Context, req *deployment.Request)
 	}
 
 	workspace := req.WorkspacePath()
+	volumeMounts, err := moby.Mounts(ctx, o.client, req.Volumes)
+	if err != nil {
+		return "", err
+	}
 	resp, err := o.client.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Config: &container.Config{
 			Image:      req.Image,
@@ -278,7 +282,7 @@ func (o *Orchestrator) startWorker(ctx context.Context, req *deployment.Request)
 			Labels:     containerLabels(req.ID, typeWorker),
 		},
 		HostConfig: &container.HostConfig{
-			Mounts:   append([]mount.Mount{o.workspaceMount(req.ID, workspace)}, moby.Mounts(req.Volumes)...),
+			Mounts:   append([]mount.Mount{o.workspaceMount(req.ID, workspace)}, volumeMounts...),
 			NanoCPUs: int64(req.CPU * 1e9),
 			Memory:   int64(req.Memory) * 1024 * 1024,
 		},
