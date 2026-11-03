@@ -218,13 +218,33 @@ type httpPoster struct {
 	client *http.Client
 }
 
-// NewPoster creates the production Poster with a bounded per-claim timeout.
-// The seam is real — backend tests substitute fakes — so the concrete type
-// stays hidden.
+// claimMargin is what a claim may take beyond its artifact budget: handing the
+// payload to the workload and binding the data plane once the artifacts are in
+// place.
+const claimMargin = 30 * time.Second
+
+// NewPoster creates the production Poster. Each claim is bounded by
+// Deadline, not by a fixed client timeout: the sidecar answers only once the
+// claim's artifacts are materialized, so a short bound would abandon every
+// claim whose download takes longer. The seam is real — backend tests
+// substitute fakes — so the concrete type stays hidden.
 //
 //nolint:iface // see above
 func NewPoster() Poster {
-	return &httpPoster{client: &http.Client{Timeout: 10 * time.Second}}
+	return &httpPoster{client: &http.Client{}}
+}
+
+// Deadline is how long a claim POST may wait for the sidecar's answer. The
+// sidecar materializes the claim's artifacts before it answers, bounded by the
+// claim's TimeoutSeconds when positive and by its own default otherwise (0 is
+// an unbounded REQUEST timeout, never an unbounded download), so the poster
+// waits for that budget plus claimMargin.
+func Deadline(req *workload.ClaimRequest) time.Duration {
+	seconds := workload.DefaultTimeoutSeconds
+	if req != nil && req.TimeoutSeconds != nil && *req.TimeoutSeconds > 0 {
+		seconds = *req.TimeoutSeconds
+	}
+	return time.Duration(seconds)*time.Second + claimMargin
 }
 
 func (p *httpPoster) Post(ctx context.Context, u Unit, req *workload.ClaimRequest) error {
@@ -239,6 +259,8 @@ func (p *httpPoster) postTo(ctx context.Context, url string, u Unit, req *worklo
 	if err != nil {
 		return err
 	}
+	ctx, cancel := context.WithTimeout(ctx, Deadline(req))
+	defer cancel()
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return err

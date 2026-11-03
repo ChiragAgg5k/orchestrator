@@ -88,6 +88,7 @@ func main() {
 	if err := server.Serve(ctx, server.Options{
 		Handler:           router,
 		Port:              svcCfg.Port,
+		WriteTimeout:      createWriteTimeout,
 		Extra:             extra,
 		DrainWait:         svcCfg.ShutdownDrainWait,
 		SetDraining:       healthChecker.SetShuttingDown,
@@ -97,6 +98,13 @@ func main() {
 		os.Exit(1)
 	}
 }
+
+// createWriteTimeout bounds a response from the sandbox API. A create answers
+// only once its sandbox is ready: a cold start pulls the image, then the claim
+// materializes the artifacts under the sidecar's default budget (5 minutes),
+// so the API server's 30s default would cut the answer off while the sandbox
+// is still coming up.
+const createWriteTimeout = 15 * time.Minute
 
 // buildOrchestrator builds the sandbox backend. The Docker one is for
 // development: no warm pool (creates are cold) and no isolation tiers, since
