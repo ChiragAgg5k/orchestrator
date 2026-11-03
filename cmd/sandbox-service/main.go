@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"orchestrator/internal/activator"
 	"orchestrator/internal/api"
+	"orchestrator/internal/claim"
 	"orchestrator/internal/config"
 	"orchestrator/internal/health"
 	"orchestrator/internal/observability"
@@ -100,11 +101,15 @@ func main() {
 }
 
 // createWriteTimeout bounds a response from the sandbox API. A create answers
-// only once its sandbox is ready: a cold start pulls the image, then the claim
-// materializes the artifacts under the sidecar's default budget (5 minutes),
-// so the API server's 30s default would cut the answer off while the sandbox
-// is still coming up.
-const createWriteTimeout = 15 * time.Minute
+// only once its sandbox is ready: a cold start pulls the image and starts the
+// pod, then the claim materializes (and mounts) the artifacts under the
+// largest timeout a sandbox accepts. The API server's 30s default would cut
+// the answer off while the sandbox is still coming up.
+var createWriteTimeout = claim.Budget(sandbox.MaxTimeoutSeconds, true) + coldStartAllowance
+
+// coldStartAllowance covers scheduling a pod and pulling its image before the
+// claim begins.
+const coldStartAllowance = 10 * time.Minute
 
 // buildOrchestrator builds the sandbox backend. The Docker one is for
 // development: no warm pool (creates are cold) and no isolation tiers, since

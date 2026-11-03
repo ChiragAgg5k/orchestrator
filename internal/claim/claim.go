@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"orchestrator/internal/apperrors"
+	"orchestrator/internal/artifact"
 	"orchestrator/internal/workload"
 	"strconv"
 	"time"
@@ -235,16 +236,32 @@ func NewPoster() Poster {
 }
 
 // Deadline is how long a claim POST may wait for the sidecar's answer. The
-// sidecar materializes the claim's artifacts before it answers, bounded by the
-// claim's TimeoutSeconds when positive and by its own default otherwise (0 is
-// an unbounded REQUEST timeout, never an unbounded download), so the poster
-// waits for that budget plus claimMargin.
+// sidecar materializes the claim's artifacts before it answers, and gives the
+// pre phase and, when the claim mounts, the mount phase each their own budget:
+// the claim's TimeoutSeconds when positive and the sidecar default otherwise
+// (0 is an unbounded REQUEST timeout, never an unbounded download).
 func Deadline(req *workload.ClaimRequest) time.Duration {
-	seconds := workload.DefaultTimeoutSeconds
-	if req != nil && req.TimeoutSeconds != nil && *req.TimeoutSeconds > 0 {
-		seconds = *req.TimeoutSeconds
+	if req == nil {
+		return Budget(0, false)
 	}
-	return time.Duration(seconds)*time.Second + claimMargin
+	timeoutSeconds := 0
+	if req.TimeoutSeconds != nil {
+		timeoutSeconds = *req.TimeoutSeconds
+	}
+	return Budget(timeoutSeconds, artifact.HasMount(req.Artifacts))
+}
+
+// Budget is the claim deadline for a timeout and whether the claim mounts:
+// one phase budget per phase the sidecar runs, plus claimMargin.
+func Budget(timeoutSeconds int, mounts bool) time.Duration {
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = workload.DefaultTimeoutSeconds
+	}
+	phases := time.Duration(1)
+	if mounts {
+		phases = 2
+	}
+	return phases*time.Duration(timeoutSeconds)*time.Second + claimMargin
 }
 
 func (p *httpPoster) Post(ctx context.Context, u Unit, req *workload.ClaimRequest) error {

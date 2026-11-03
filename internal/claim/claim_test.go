@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"orchestrator/internal/apperrors"
+	"orchestrator/internal/artifact"
 	"orchestrator/internal/workload"
 	"strconv"
 	"strings"
@@ -333,6 +334,7 @@ func TestDeadlineCoversTheArtifactBudget(t *testing.T) {
 		{"zero is an unbounded request, not an unbounded download", seconds(0), def},
 		{"positive bounds the artifacts", seconds(900), 900*time.Second + claimMargin},
 		{"nil request", nil, def},
+		{"a mount adds its own phase", &workload.ClaimRequest{TimeoutSeconds: new(900), Artifacts: []artifact.Artifact{&artifact.Mount{ID: "m"}}}, 2*900*time.Second + claimMargin},
 	}
 	for _, c := range cases {
 		if got := Deadline(c.req); got != c.want {
