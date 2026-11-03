@@ -257,11 +257,10 @@ func Budget(timeoutSeconds int, mounts bool) time.Duration {
 	if timeoutSeconds <= 0 {
 		timeoutSeconds = workload.DefaultTimeoutSeconds
 	}
-	phases := time.Duration(1)
 	if mounts {
-		phases = 2
+		timeoutSeconds *= 2
 	}
-	return phases*time.Duration(timeoutSeconds)*time.Second + claimMargin
+	return time.Duration(timeoutSeconds)*time.Second + claimMargin
 }
 
 func (p *httpPoster) Post(ctx context.Context, u Unit, req *workload.ClaimRequest) error {

@@ -89,7 +89,7 @@ func main() {
 	if err := server.Serve(ctx, server.Options{
 		Handler:           router,
 		Port:              svcCfg.Port,
-		WriteTimeout:      createWriteTimeout,
+		WriteTimeout:      createWriteTimeout(),
 		Extra:             extra,
 		DrainWait:         svcCfg.ShutdownDrainWait,
 		SetDraining:       healthChecker.SetShuttingDown,
@@ -105,7 +105,9 @@ func main() {
 // pod, then the claim materializes (and mounts) the artifacts under the
 // largest timeout a sandbox accepts. The API server's 30s default would cut
 // the answer off while the sandbox is still coming up.
-var createWriteTimeout = claim.Budget(sandbox.MaxTimeoutSeconds, true) + coldStartAllowance
+func createWriteTimeout() time.Duration {
+	return claim.Budget(sandbox.MaxTimeoutSeconds, true) + coldStartAllowance
+}
 
 // coldStartAllowance covers scheduling a pod and pulling its image before the
 // claim begins.
