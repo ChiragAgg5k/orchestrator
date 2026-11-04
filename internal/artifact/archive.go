@@ -79,9 +79,9 @@ func sourceFS(root *os.Root, name string) (fs.FS, error) {
 		return nil, fmt.Errorf("failed to stat source: %w", err)
 	}
 	if info.IsDir() {
-		return fs.Sub(root.FS(), fsName(name))
+		return fs.Sub(workspaceFS{root}, fsName(name))
 	}
-	parent, err := fs.Sub(root.FS(), fsName(filepath.Dir(name)))
+	parent, err := fs.Sub(workspaceFS{root}, fsName(filepath.Dir(name)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open source directory: %w", err)
 	}
@@ -168,7 +168,7 @@ func (a *Archive) applyTar(root *os.Root) *Result {
 	}
 
 	if info.IsDir() {
-		src, err := fs.Sub(root.FS(), fsName(a.In))
+		src, err := fs.Sub(workspaceFS{root}, fsName(a.In))
 		if err != nil {
 			return &Result{Status: "failed", Error: fmt.Errorf("failed to open source: %w", err)}
 		}
@@ -249,12 +249,20 @@ func archiveDir(tw *tar.Writer, src fs.FS) error {
 
 func archiveFile(tw *tar.Writer, root *os.Root, name string, info os.FileInfo) error {
 	linkname := ""
+	var file *os.File
 	if info.Mode()&os.ModeSymlink != 0 {
 		var err error
-		linkname, err = root.Readlink(name)
-		if err != nil {
+		if linkname, err = root.Readlink(name); err != nil {
 			return fmt.Errorf("failed to read symlink: %w", err)
 		}
+	} else {
+		// Opened before the header is written, so a FIFO or device fails the
+		// archive rather than leaving a header with no content behind it.
+		var err error
+		if file, info, err = openRegular(root, name); err != nil {
+			return fmt.Errorf("failed to open file: %w", err)
+		}
+		defer file.Close()
 	}
 	header, err := tar.FileInfoHeader(info, linkname)
 	if err != nil {
@@ -265,19 +273,11 @@ func archiveFile(tw *tar.Writer, root *os.Root, name string, info os.FileInfo) e
 	if err := tw.WriteHeader(header); err != nil {
 		return fmt.Errorf("failed to write tar header: %w", err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
+	if file == nil {
 		return nil
 	}
-
-	file, err := root.Open(name)
-	if err != nil {
-		return fmt.Errorf("failed to open file: %w", err)
-	}
-	defer file.Close()
-
 	if _, err := io.Copy(tw, file); err != nil {
 		return fmt.Errorf("failed to write file to tar: %w", err)
 	}
-
 	return nil
 }

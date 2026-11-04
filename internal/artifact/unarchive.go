@@ -407,7 +407,7 @@ func (a *Unarchive) Apply(ctx context.Context, root *os.Root) *Result {
 	// A source that is missing or empty has no magic to sniff, so it would
 	// otherwise fall through to "unrecognized archive format" and mask the real
 	// failure (typically the download artifact that was meant to produce it).
-	f, err := root.Open(a.In)
+	f, _, err := openRegular(root, a.In)
 	if err != nil {
 		return &Result{Status: "failed", Error: fmt.Errorf("failed to open archive: %w", err)}
 	}

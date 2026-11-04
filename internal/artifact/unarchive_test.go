@@ -553,11 +553,10 @@ func TestUnarchive_Apply_EmptySource(t *testing.T) {
 	}
 }
 
-// TestUnarchive_Apply_UnreadableSource covers a source that opens but cannot be
-// read. A directory is the portable way to produce that: os.Open succeeds and
-// the read fails with EISDIR on both Linux and macOS. The read returns n == 0,
-// so discarding its error would misreport a filesystem failure as an empty
-// archive.
+// TestUnarchive_Apply_UnreadableSource covers a source that is not a regular
+// file. A directory is refused when it is opened; before it reached the header
+// read, which returns n == 0, so the failure must not be misreported as an
+// empty or unrecognized archive.
 func TestUnarchive_Apply_UnreadableSource(t *testing.T) {
 	tmpDir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(tmpDir, "source.tar.gz"), 0o755); err != nil {
@@ -575,8 +574,8 @@ func TestUnarchive_Apply_UnreadableSource(t *testing.T) {
 			t.Errorf("read failure misreported as %q: %v", wrong, result.Error)
 		}
 	}
-	if !strings.Contains(result.Error.Error(), "failed to read archive header") {
-		t.Errorf("expected the error to name the failed header read, got %v", result.Error)
+	if !strings.Contains(result.Error.Error(), "not a regular file") {
+		t.Errorf("expected the error to name the non-regular source, got %v", result.Error)
 	}
 }
 

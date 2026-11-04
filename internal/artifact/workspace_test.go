@@ -341,6 +341,46 @@ func TestReadAndUploadRejectNonRegularFiles(t *testing.T) {
 	}
 }
 
+// Archiving and unarchiving read workspace files too. A FIFO in a packed tree,
+// as the packed input itself, or as the archive to unpack must never hang the
+// sidecar on its open: tar and unarchive refuse it, and the image formats
+// record it as a FIFO node without opening it.
+func TestArchiveAndUnarchiveRejectNonRegularFiles(t *testing.T) {
+	ws := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(ws, "tree"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ws, "tree", "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{"pipe", filepath.Join("tree", "pipe")} {
+		if err := syscall.Mkfifo(filepath.Join(ws, p), 0o644); err != nil {
+			t.Skipf("mkfifo unavailable: %v", err)
+		}
+	}
+
+	artifacts := []Artifact{&Unarchive{ID: "unarchive", In: "pipe", Out: "x"}}
+	for _, format := range []string{"tar", "squashfs", "erofs"} {
+		for _, in := range []string{"tree", "pipe"} {
+			artifacts = append(artifacts, &Archive{ID: format + "/" + in, In: in, Out: format + "-" + in + ".out", Format: format})
+		}
+	}
+	for _, a := range artifacts {
+		t.Run(a.ArtifactID(), func(t *testing.T) {
+			done := make(chan *Result, 1)
+			go func() { done <- a.Apply(context.Background(), workspace(t, ws)) }()
+			select {
+			case r := <-done:
+				if image := strings.HasPrefix(a.ArtifactID(), "squashfs") || strings.HasPrefix(a.ArtifactID(), "erofs"); !image && r.Status != "failed" {
+					t.Errorf("status = %q, want failed", r.Status)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("blocked on the FIFO instead of failing")
+			}
+		})
+	}
+}
+
 // A read is capped: a build-written file larger than the cap fails rather than
 // buffering into the sidecar and the callback.
 func TestReadRejectsOversizeContent(t *testing.T) {
