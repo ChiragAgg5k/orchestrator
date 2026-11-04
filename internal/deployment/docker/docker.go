@@ -217,7 +217,7 @@ func (o *Orchestrator) runArtifacts(ctx context.Context, req *deployment.Request
 	if o.cfg.ArtifactEndpoint != "" {
 		env = append(env, "ARTIFACT_ENDPOINT="+o.cfg.ArtifactEndpoint)
 	}
-	for _, kv := range config.LoadS3Profiles().ToEnv() {
+	for _, kv := range artifact.S3ProfilesFor(req.Artifacts, config.LoadS3Profiles()).ToEnv() {
 		env = append(env, kv[0]+"="+kv[1])
 	}
 
@@ -229,10 +229,7 @@ func (o *Orchestrator) runArtifacts(ctx context.Context, req *deployment.Request
 			User:   "0",
 			Labels: containerLabels(req.ID, typeArtifacts),
 		},
-		HostConfig: &container.HostConfig{
-			Mounts:     []mount.Mount{o.workspaceMount(req.ID, workspace)},
-			ExtraHosts: o.cfg.ExtraHosts,
-		},
+		HostConfig:       moby.FileAccessHostConfig([]mount.Mount{o.workspaceMount(req.ID, workspace)}, o.cfg.ExtraHosts),
 		NetworkingConfig: moby.NetworkingConfig(o.cfg.Network),
 		Name:             artifactsName(req.ID),
 	})
@@ -269,6 +266,10 @@ func (o *Orchestrator) startWorker(ctx context.Context, req *deployment.Request)
 	}
 
 	workspace := req.WorkspacePath()
+	volumeMounts, err := moby.Mounts(ctx, o.client, req.Volumes)
+	if err != nil {
+		return "", err
+	}
 	resp, err := o.client.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Config: &container.Config{
 			Image:      req.Image,
@@ -277,11 +278,7 @@ func (o *Orchestrator) startWorker(ctx context.Context, req *deployment.Request)
 			WorkingDir: workspace,
 			Labels:     containerLabels(req.ID, typeWorker),
 		},
-		HostConfig: &container.HostConfig{
-			Mounts:   append([]mount.Mount{o.workspaceMount(req.ID, workspace)}, moby.Mounts(req.Volumes)...),
-			NanoCPUs: int64(req.CPU * 1e9),
-			Memory:   int64(req.Memory) * 1024 * 1024,
-		},
+		HostConfig:       moby.WorkloadHostConfig(append([]mount.Mount{o.workspaceMount(req.ID, workspace)}, volumeMounts...), req.CPU, req.Memory, nil),
 		NetworkingConfig: moby.NetworkingConfig(o.cfg.Network),
 		Name:             workerName(req.ID),
 	})

@@ -3,6 +3,7 @@ package sidecar
 import (
 	"errors"
 	"fmt"
+	"orchestrator/internal/artifact"
 	"os"
 	"path/filepath"
 )
@@ -38,24 +39,39 @@ const (
 	markerArtifactsComplete marker = "artifacts-complete"
 )
 
+// name of m relative to the workspace.
+func (m marker) name() string {
+	return filepath.Join(markerDir, string(m))
+}
+
 // path of m inside workspace.
 func (m marker) path(workspace string) string {
-	return filepath.Join(workspace, markerDir, string(m))
+	return filepath.Join(workspace, m.name())
 }
 
 // exists reports whether m is set in workspace.
 func (m marker) exists(workspace string) bool {
-	_, err := os.Stat(m.path(workspace))
+	ws, err := os.OpenRoot(workspace)
+	if err != nil {
+		return false
+	}
+	defer ws.Close()
+	_, err = ws.Stat(m.name())
 	return err == nil
 }
 
-// write sets m in workspace.
+// write sets m in workspace. Through a root, like every sidecar write there:
+// the workload can replace markerDir with a link, and the sidecar is root.
 func (m marker) write(workspace string) error {
-	path := m.path(workspace)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	ws, err := artifact.OpenWorkspace(workspace)
+	if err != nil {
+		return err
+	}
+	defer ws.Close()
+	if err := ws.MkdirAll(markerDir, 0o755); err != nil {
 		return fmt.Errorf("create marker directory: %w", err)
 	}
-	if err := os.WriteFile(path, []byte{}, 0o644); err != nil {
+	if err := ws.WriteFile(m.name(), []byte{}, 0o644); err != nil {
 		return fmt.Errorf("write %s marker: %w", m, err)
 	}
 	return nil
@@ -63,7 +79,12 @@ func (m marker) write(workspace string) error {
 
 // clear removes m from workspace; a marker that was never set is fine.
 func (m marker) clear(workspace string) error {
-	if err := os.Remove(m.path(workspace)); err != nil && !errors.Is(err, os.ErrNotExist) {
+	ws, err := artifact.OpenWorkspace(workspace)
+	if err != nil {
+		return err
+	}
+	defer ws.Close()
+	if err := ws.Remove(m.name()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("clear %s marker: %w", m, err)
 	}
 	return nil

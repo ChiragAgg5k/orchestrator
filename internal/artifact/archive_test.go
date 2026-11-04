@@ -28,12 +28,17 @@ func TestSourceFS_FollowsTopLevelDirectorySymlink(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(target, "nested", "file.txt"), []byte("payload"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(tmpDir, "source")
-	if err := os.Symlink(target, link); err != nil {
+	if err := os.Symlink("target", filepath.Join(tmpDir, "source")); err != nil {
 		t.Fatal(err)
 	}
 
-	fSys, err := sourceFS(link)
+	root, err := os.OpenRoot(tmpDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	fSys, err := sourceFS(root, "source")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +66,7 @@ func TestArchive_Apply_PreservesSymlinkWithoutFollowing(t *testing.T) {
 	}
 
 	a := &Archive{ID: "a", In: "source", Out: "output.tar", Format: "tar"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 
@@ -105,7 +110,7 @@ func TestArchive_Apply(t *testing.T) {
 		Format: "tar",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -125,7 +130,7 @@ func TestArchive_Apply_InvalidFormat(t *testing.T) {
 		Format: "zip",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error == nil {
 		t.Error("Expected error for unsupported format")
 	}

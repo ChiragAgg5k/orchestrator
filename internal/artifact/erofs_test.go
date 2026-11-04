@@ -53,7 +53,7 @@ func TestArchive_Erofs_RoundTrip(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "sub", "nested.txt"), []byte("nested"), 0o644)
 
 	arc := &Archive{ID: "a", In: "src", Out: "out.erofs", Format: "erofs"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 
@@ -83,7 +83,7 @@ func TestArchive_Erofs_Compressed(t *testing.T) {
 			os.WriteFile(filepath.Join(srcDir, "sub", "random.bin"), random, 0o644)
 
 			arc := &Archive{ID: "a", In: "src", Out: "out.erofs", Format: "erofs", Compression: comp}
-			if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+			if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 				t.Fatalf("archive Apply() error = %v", r.Error)
 			}
 			image := filepath.Join(tmpDir, "out.erofs")
@@ -96,7 +96,7 @@ func TestArchive_Erofs_Compressed(t *testing.T) {
 			}
 
 			un := &Unarchive{ID: "u", In: "out.erofs", Out: "extracted"}
-			if r := un.Apply(t.Context(), tmpDir); r.Error != nil {
+			if r := un.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 				t.Fatalf("unarchive Apply() error = %v", r.Error)
 			}
 			for name, want := range map[string][]byte{
@@ -121,7 +121,7 @@ func TestArchive_Erofs_SingleFile(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, "solo.txt"), []byte("solo content"), 0o644)
 
 	arc := &Archive{ID: "a", In: "solo.txt", Out: "out.erofs", Format: "erofs"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 
@@ -149,12 +149,12 @@ func TestUnarchive_ExtractsErofs(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "sub", "nested.txt"), []byte("nested"), 0o644)
 
 	arc := &Archive{ID: "a", In: "src", Out: "data.erofs", Format: "erofs"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 
 	un := &Unarchive{ID: "u", In: "data.erofs", Out: "extracted"}
-	if r := un.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := un.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("unarchive Apply() error = %v", r.Error)
 	}
 
@@ -175,12 +175,12 @@ func TestUnarchive_ExtractsErofs_Strip(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "repo", "sub", "nested.txt"), []byte("nested"), 0o644)
 
 	arc := &Archive{ID: "a", In: "src", Out: "data.erofs", Format: "erofs"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 
 	un := &Unarchive{ID: "u", In: "data.erofs", Out: "extracted", Strip: true}
-	if r := un.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := un.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("unarchive Apply() error = %v", r.Error)
 	}
 
@@ -201,12 +201,12 @@ func TestUnarchive_ExtractsErofs_Subdir(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "sub", "nested.txt"), []byte("nested"), 0o644)
 
 	arc := &Archive{ID: "a", In: "src", Out: "data.erofs", Format: "erofs"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 
 	un := &Unarchive{ID: "u", In: "data.erofs", Out: "extracted", Subdir: "sub"}
-	if r := un.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := un.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("unarchive Apply() error = %v", r.Error)
 	}
 

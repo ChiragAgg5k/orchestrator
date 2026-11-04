@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 )
 
 // Stat reports the size in bytes of a file for inclusion in a callback event.
@@ -19,10 +18,8 @@ func (a *Stat) ArtifactType() string { return "stat" }
 func (a *Stat) DependsOn() string    { return a.Depends }
 
 // Apply reports the file size in bytes.
-func (a *Stat) Apply(ctx context.Context, basePath string) *Result {
-	srcPath := filepath.Join(basePath, a.In)
-
-	info, err := os.Stat(srcPath)
+func (a *Stat) Apply(ctx context.Context, root *os.Root) *Result {
+	info, err := root.Stat(a.In)
 	if err != nil {
 		return &Result{Status: "failed", Error: fmt.Errorf("failed to stat file: %w", err)}
 	}

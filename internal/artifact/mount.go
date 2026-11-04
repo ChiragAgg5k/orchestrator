@@ -3,6 +3,7 @@ package artifact
 import (
 	"context"
 	"errors"
+	"os"
 )
 
 // Sync bounds. A floor on the interval keeps a mount from turning into a
@@ -73,6 +74,6 @@ func HasMount(artifacts []Artifact) bool {
 // Apply must never run: the sidecar establishes mounts out of band (see the
 // type doc). Reaching here means a mount slipped into the ordinary artifact
 // flow, so it fails loudly rather than reporting a success nobody performed.
-func (a *Mount) Apply(context.Context, string) *Result {
+func (a *Mount) Apply(context.Context, *os.Root) *Result {
 	return &Result{Status: "failed", Error: errors.New("mount artifacts are established by the sidecar, not applied")}
 }

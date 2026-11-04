@@ -1,0 +1,85 @@
+package artifact
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
+	"syscall"
+)
+
+// OpenWorkspace opens the workspace as an os.Root. Every artifact resolves its
+// in and out paths through it, and so does the sidecar's own bookkeeping, so a
+// path can only ever name something inside the workspace: a symlink whose target leaves it fails instead of being
+// followed, and so does an absolute target, which the root refuses even when
+// it would land back inside. The workspace is shared with the workload, which
+// runs before the post phase and can leave a link anywhere in it — and the
+// sidecar reads and writes as root, with its own secrets in its environment.
+func OpenWorkspace(basePath string) (*os.Root, error) {
+	if err := os.MkdirAll(basePath, 0o755); err != nil {
+		return nil, fmt.Errorf("failed to create workspace: %w", err)
+	}
+	root, err := os.OpenRoot(basePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open workspace: %w", err)
+	}
+	return root, nil
+}
+
+// fsName turns a workspace-relative OS path into the slash-separated, cleaned
+// form io/fs names take, so a root's FS can be asked for it.
+func fsName(name string) string {
+	return path.Clean(filepath.ToSlash(name))
+}
+
+// openRegular opens a workspace file for reading without blocking on it and
+// refusing anything but a regular file. The workspace is shared with the
+// workload, which can leave a FIFO or device where an output is expected:
+// opening one blocks the sidecar indefinitely (no deadline reaches a blocking
+// open) or streams a boundless read. O_NONBLOCK returns straight away; the
+// fstat on the open descriptor then judges the node the open actually landed
+// on, not one a check could race.
+func openRegular(root *os.Root, name string) (*os.File, os.FileInfo, error) {
+	return openNonBlocking(root, name, false)
+}
+
+func openNonBlocking(root *os.Root, name string, allowDir bool) (*os.File, os.FileInfo, error) {
+	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() && (!allowDir || !info.IsDir()) {
+		f.Close()
+		return nil, nil, fmt.Errorf("%s is not a regular file", name)
+	}
+	return f, info, nil
+}
+
+// workspaceFS is the workspace as an fs.FS for walking a tree into an archive
+// or image: root.FS(), except that Open goes through openNonBlocking, so a
+// FIFO or device anywhere in the tree fails the walk instead of hanging it.
+type workspaceFS struct{ root *os.Root }
+
+func (w workspaceFS) Open(name string) (fs.File, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
+	}
+	f, _, err := openNonBlocking(w.root, filepath.FromSlash(name), true)
+	if err != nil {
+		return nil, err
+	}
+	return f, nil
+}
+
+func (w workspaceFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	return fs.ReadDir(w.root.FS(), name)
+}
+func (w workspaceFS) Stat(name string) (fs.FileInfo, error)  { return fs.Stat(w.root.FS(), name) }
+func (w workspaceFS) Lstat(name string) (fs.FileInfo, error) { return fs.Lstat(w.root.FS(), name) }
+func (w workspaceFS) ReadLink(name string) (string, error)   { return fs.ReadLink(w.root.FS(), name) }

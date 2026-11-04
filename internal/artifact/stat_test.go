@@ -28,7 +28,7 @@ func TestStat_Apply(t *testing.T) {
 
 	a := &Stat{ID: "test-stat", In: "result.bin"}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -45,7 +45,7 @@ func TestStat_Apply(t *testing.T) {
 func TestStat_Apply_Missing(t *testing.T) {
 	a := &Stat{ID: "test-stat", In: "nope.bin"}
 
-	result := a.Apply(t.Context(), t.TempDir())
+	result := a.Apply(t.Context(), workspace(t, t.TempDir()))
 	if result.Error == nil {
 		t.Fatal("Expected error for missing file")
 	}
@@ -57,7 +57,7 @@ func TestStat_Apply_Missing(t *testing.T) {
 func TestStat_Apply_Directory(t *testing.T) {
 	a := &Stat{ID: "test-stat", In: "."}
 
-	result := a.Apply(t.Context(), t.TempDir())
+	result := a.Apply(t.Context(), workspace(t, t.TempDir()))
 	if result.Error == nil {
 		t.Fatal("Expected error for directory")
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"orchestrator/internal/artifact"
@@ -109,7 +110,7 @@ func (r *Runner) recordPush(id string, p deltaPrint) {
 // empty would let the next push overwrite a workspace we simply failed to read.
 func (r *Runner) restoreDelta(ctx context.Context, m *artifact.Mount) error {
 	upper := mount.UpperDir(filepath.Join(r.sharedVolumePath, m.Out))
-	if err := os.MkdirAll(upper, 0o755); err != nil {
+	if err := r.inWorkspace(func(ws *os.Root) error { return ws.MkdirAll(relativeTo(r.sharedVolumePath, upper), 0o755) }); err != nil {
 		return fmt.Errorf("create upper layer: %w", err)
 	}
 
@@ -134,8 +135,11 @@ func (r *Runner) restoreDelta(ctx context.Context, m *artifact.Mount) error {
 	if err := r.apply(ctx, unpack); err != nil {
 		return fmt.Errorf("unpack delta: %w", err)
 	}
-	_ = os.Remove(filepath.Join(r.sharedVolumePath, archiveRel))
-	if err := makeWritable(upper); err != nil {
+	err := r.inWorkspace(func(ws *os.Root) error {
+		_ = ws.Remove(archiveRel)
+		return makeWritable(ws, relativeTo(r.sharedVolumePath, upper))
+	})
+	if err != nil {
 		return fmt.Errorf("open up restored delta: %w", err)
 	}
 
@@ -176,7 +180,7 @@ func (r *Runner) pushDelta(ctx context.Context, m *artifact.Mount) error {
 		Format:      "tar",
 		Compression: "gzip",
 	}
-	defer func() { _ = os.Remove(filepath.Join(r.sharedVolumePath, archiveRel)) }()
+	defer func() { _ = r.inWorkspace(func(ws *os.Root) error { return ws.Remove(archiveRel) }) }()
 	upload := &artifact.Upload{ID: m.ID + ".push", In: archiveRel, Out: m.Sync}
 	if err := r.apply(ctx, pack, upload); err != nil {
 		return fmt.Errorf("push delta: %w", err)
@@ -268,20 +272,20 @@ func (r *Runner) apply(ctx context.Context, arts ...artifact.Artifact) error {
 // World-writable for the same reason the upper layer is — the sidecar cannot
 // know the workload's uid — and these trees belong to one workload. The
 // execute bit survives, since a workspace legitimately holds scripts.
-func makeWritable(root string) error {
-	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+func makeWritable(ws *os.Root, dir string) error {
+	return fs.WalkDir(ws.FS(), filepath.ToSlash(filepath.Clean(dir)), func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		// Chmod follows symlinks on Linux. Archive links are preserved
-		// verbatim and may intentionally point outside this tree, so changing a
-		// link target here could mutate unrelated workspace permissions.
+		// Archive links are preserved verbatim and may point anywhere in the
+		// workspace; Chmod follows them, so they are left alone rather than
+		// mutating some other file's permissions.
+		if d.Type()&fs.ModeSymlink != 0 {
+			return nil
+		}
 		info, err := d.Info()
 		if err != nil {
 			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return nil
 		}
 		mode := os.FileMode(0o666)
 		if d.IsDir() {
@@ -289,7 +293,7 @@ func makeWritable(root string) error {
 		} else if info.Mode().Perm()&0o111 != 0 {
 			mode |= 0o111
 		}
-		return os.Chmod(path, mode)
+		return ws.Chmod(filepath.FromSlash(p), mode)
 	})
 }
 

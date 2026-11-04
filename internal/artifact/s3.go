@@ -27,6 +27,35 @@ func isS3URL(rawURL string) bool {
 	return strings.HasPrefix(strings.ToLower(rawURL), s3Scheme+"://")
 }
 
+// S3ProfilesFor is the part of profiles the artifacts' s3:// URLs name, which
+// is all a sidecar running them needs: one with no s3:// artifact gets none of
+// the platform's object-store keys, and one naming a profile gets only that.
+func S3ProfilesFor(artifacts []Artifact, profiles config.S3Profiles) config.S3Profiles {
+	used := config.S3Profiles{}
+	for _, a := range artifacts {
+		var urls []string
+		switch v := a.(type) {
+		case *Download:
+			urls = []string{v.In}
+		case *Upload:
+			urls = []string{v.Out}
+		case *Mount:
+			urls = []string{v.Sync} // restored and pushed over the same URL
+		}
+		for _, raw := range urls {
+			if !isS3URL(raw) {
+				continue
+			}
+			if u, err := url.Parse(raw); err == nil {
+				if creds, ok := profiles[u.User.Username()]; ok {
+					used[u.User.Username()] = creds
+				}
+			}
+		}
+	}
+	return used
+}
+
 // s3Now is overridable in tests; production uses the wall clock.
 var s3Now = time.Now
 

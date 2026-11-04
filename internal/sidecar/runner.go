@@ -85,6 +85,7 @@ type Runner struct {
 	emitter          emitter.Emitter[job.ArtifactReport]
 	s3               config.S3Profiles
 	postFileGrace    time.Duration // wait for a post-job artifact's source file
+	holdGrace        time.Duration // how long the hold outlasts the job deadline
 	sync             syncState     // delta sync loops for synced mounts
 }
 
@@ -98,6 +99,7 @@ func NewRunner(jobID, sharedVolumePath string, timeoutSeconds int, opts ...Optio
 		waitFn:           waitForSignal,
 		mounter:          mount.Beneath{Dir: sharedVolumePath},
 		postFileGrace:    defaultPostJobFileGrace,
+		holdGrace:        defaultHoldGrace,
 	}
 	for _, o := range opts {
 		o(r)
@@ -106,19 +108,16 @@ func NewRunner(jobID, sharedVolumePath string, timeoutSeconds int, opts ...Optio
 }
 
 // NewHTTPSink returns an emitter listener that POSTs artifact results to the orchestrator.
-// It captures all job-level fields (callback config, meta) and merges them into each report.
-// The HTTP client timeout governs per-request cancellation.
-func NewHTTPSink(jobID, endpoint, token string, timeout time.Duration, callbackURL, callbackKey string, callbackEvents []string, meta map[string]string) func(job.ArtifactReport) {
+// The orchestrator delivers them to the job's own callback; the sidecar holds
+// none of that configuration. The HTTP client timeout governs per-request
+// cancellation.
+func NewHTTPSink(jobID, endpoint, token string, timeout time.Duration) func(job.ArtifactReport) {
 	client := &http.Client{Timeout: timeout}
 	return func(report job.ArtifactReport) {
 		if endpoint == "" {
 			return
 		}
 		report.JobID = jobID
-		report.CallbackURL = callbackURL
-		report.CallbackKey = callbackKey
-		report.CallbackEvents = callbackEvents
-		report.Meta = meta
 		data, err := json.Marshal(report)
 		if err != nil {
 			slog.With("artifactId", report.ID, "error", err).Warn("Failed to marshal artifact report")
@@ -232,14 +231,25 @@ func (r *Runner) Run(ctx context.Context, artifacts []artifact.Artifact) error {
 	// (timeout 0) waits on the caller's context alone: the pod, not a job
 	// deadline, decides when it dies, and kubelet's SIGTERM ends the hold —
 	// a deadline there would tear the mounts out from under a serving workload.
+	//
+	// The backend enforces the deadline on the worker and signals completion
+	// once the worker is gone, so the hold outlasts the deadline by holdGrace
+	// and only expires when that signal is lost — the Docker jobs service was
+	// down, say, and its deadline with it. Nothing then says the worker has
+	// stopped writing, so the post phase is skipped rather than run against it:
+	// the sidecar fails, and the backend fails the job.
 	holdCtx := ctx
 	if r.timeoutSeconds > 0 {
 		var cancelHold context.CancelFunc
-		holdCtx, cancelHold = context.WithTimeout(ctx, r.phaseTimeout())
+		holdCtx, cancelHold = context.WithTimeout(ctx, r.phaseTimeout()+r.holdGrace)
 		defer cancelHold()
 	}
 	logger.Info("Waiting for worker completion signal")
 	r.waitFn(holdCtx)
+	if errors.Is(holdCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+		logger.Error("No worker completion signal by the job deadline, skipping post-job artifacts")
+		return errors.Join(errors.New("no worker completion signal by the job deadline"), r.Release())
+	}
 	logger.Info("Received worker completion signal")
 
 	// Detached and bounded, like RunPost: the completion signal may be the
@@ -403,6 +413,10 @@ func (r *Runner) RunPost(ctx context.Context, artifacts []artifact.Artifact) err
 	return nil
 }
 
+// defaultHoldGrace is how long the combined-mode hold outlasts the job deadline
+// the backend enforces on the worker.
+const defaultHoldGrace = 30 * time.Second
+
 // phaseTimeout bounds an individual artifact phase (downloads, mounts, the
 // post-job flush). It is the job timeout when the job is bounded; an unbounded
 // workload (timeoutSeconds == 0) still must not hang a phase forever, so
@@ -454,7 +468,7 @@ func (r *Runner) establishMounts(ctx context.Context, mounts []*artifact.Mount) 
 		start := time.Now()
 		err := r.waitForPath(ctx, image)
 		if err == nil {
-			err = os.MkdirAll(filepath.Join(r.sharedVolumePath, target), 0o755)
+			err = r.inWorkspace(func(ws *os.Root) error { return ws.MkdirAll(target, 0o755) })
 		}
 
 		format, compression := "", ""
@@ -480,7 +494,7 @@ func (r *Runner) establishMounts(ctx context.Context, mounts []*artifact.Mount) 
 				UpperOnDisk: m.Sync != "",
 			})
 			if err != nil && sourceDir {
-				_ = os.RemoveAll(filepath.Join(r.sharedVolumePath, source))
+				_ = r.inWorkspace(func(ws *os.Root) error { return ws.RemoveAll(source) })
 			}
 		}
 		if err != nil {
@@ -501,28 +515,41 @@ func (r *Runner) establishMounts(ctx context.Context, mounts []*artifact.Mount) 
 // up existing entries: overlayfs checks each lower inode's permissions first,
 // and extraction made those inodes root-owned because the sidecar runs as root.
 func (r *Runner) extractTarMountLower(ctx context.Context, m *artifact.Mount, lowerRel string) error {
-	lower := filepath.Join(r.sharedVolumePath, lowerRel)
-	if err := os.RemoveAll(lower); err != nil {
-		return fmt.Errorf("remove stale tar lower directory: %w", err)
-	}
-	if err := os.Mkdir(lower, 0o755); err != nil {
-		return fmt.Errorf("create tar lower directory: %w", err)
-	}
-
-	result := (&artifact.Unarchive{In: m.In, Out: lowerRel}).Apply(ctx, r.sharedVolumePath)
-	if result.Error != nil {
-		_ = os.RemoveAll(lower)
-		return result.Error
-	}
-	if m.Writable {
-		// Open the extracted tree to the unknown workload uid just like a
-		// restored sync delta and the overlay upper directory.
-		if err := makeWritable(lower); err != nil {
-			_ = os.RemoveAll(lower)
-			return fmt.Errorf("make tar lower writable: %w", err)
+	return r.inWorkspace(func(ws *os.Root) error {
+		if err := ws.RemoveAll(lowerRel); err != nil {
+			return fmt.Errorf("remove stale tar lower directory: %w", err)
 		}
+		if err := ws.Mkdir(lowerRel, 0o755); err != nil {
+			return fmt.Errorf("create tar lower directory: %w", err)
+		}
+
+		result := (&artifact.Unarchive{In: m.In, Out: lowerRel}).Apply(ctx, ws)
+		if result.Error != nil {
+			_ = ws.RemoveAll(lowerRel)
+			return result.Error
+		}
+		if m.Writable {
+			// Open the extracted tree to the unknown workload uid just like a
+			// restored sync delta and the overlay upper directory.
+			if err := makeWritable(ws, lowerRel); err != nil {
+				_ = ws.RemoveAll(lowerRel)
+				return fmt.Errorf("make tar lower writable: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+// inWorkspace runs fn against the workspace opened as a root, so the sidecar's
+// own files there resolve the way artifact paths do: a link the workload left
+// in the shared tree cannot carry a write, removal or chmod out of it.
+func (r *Runner) inWorkspace(fn func(ws *os.Root) error) error {
+	ws, err := artifact.OpenWorkspace(r.sharedVolumePath)
+	if err != nil {
+		return err
 	}
-	return nil
+	defer ws.Close()
+	return fn(ws)
 }
 
 // unmountAll tears down mounts in reverse order. Retain failed cleanup so a
@@ -551,6 +578,12 @@ type s3Configurable interface {
 // artifacts, it waits for files to appear before processing.
 
 func (r *Runner) processArtifacts(ctx context.Context, artifacts []artifact.Artifact, waitForFiles bool) error {
+	ws, err := artifact.OpenWorkspace(r.sharedVolumePath)
+	if err != nil {
+		return err
+	}
+	defer ws.Close()
+
 	return artifact.RunInOrder(ctx, artifacts, func(ctx context.Context, a artifact.Artifact) error {
 		start := time.Now()
 		if c, ok := a.(s3Configurable); ok {
@@ -574,7 +607,7 @@ func (r *Runner) processArtifacts(ctx context.Context, artifacts []artifact.Arti
 			}
 		}
 
-		result := a.Apply(ctx, r.sharedVolumePath)
+		result := a.Apply(ctx, ws)
 		r.emitArtifact(a, *result, start)
 
 		logger := slog.With("artifactId", a.ArtifactID(), "type", a.ArtifactType(), "status", result.Status)

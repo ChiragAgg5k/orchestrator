@@ -29,6 +29,7 @@ import (
 	"orchestrator/internal/apperrors"
 	"orchestrator/internal/artifact"
 	"orchestrator/internal/config"
+	"orchestrator/internal/deployment"
 	"orchestrator/internal/moby"
 	"orchestrator/internal/pool"
 	"orchestrator/internal/sandbox"
@@ -100,6 +101,12 @@ func (o *Orchestrator) Create(ctx context.Context, req *sandbox.Request) (*sandb
 	if artifact.HasMount(req.Artifacts) {
 		return nil, apperrors.Validation("artifacts",
 			"the Docker backend cannot mount: sibling containers do not share a mount namespace (see docs/sandboxes.md#the-docker-backend)")
+	}
+	// An isolation tier selects a Kubernetes RuntimeClass. Accepting one here
+	// would run the sandbox on runc all the same — the weakest isolation for
+	// code the tier was chosen to contain — so refuse it instead.
+	if req.RuntimeClass != "" && req.RuntimeClass != deployment.RuntimeClassRunc {
+		return nil, apperrors.Validation("runtimeClass", "runtimeClass tiers require the Kubernetes backend")
 	}
 	if _, err := o.client.VolumeInspect(ctx, volumeName(req.ID), client.VolumeInspectOptions{}); err == nil {
 		return nil, apperrors.Conflict("sandbox " + req.ID + " already exists")
@@ -256,7 +263,7 @@ func (o *Orchestrator) runArtifacts(ctx context.Context, req *sandbox.Request) e
 	if o.cfg.ArtifactEndpoint != "" {
 		env = append(env, "ARTIFACT_ENDPOINT="+o.cfg.ArtifactEndpoint)
 	}
-	for _, kv := range config.LoadS3Profiles().ToEnv() {
+	for _, kv := range artifact.S3ProfilesFor(req.Artifacts, config.LoadS3Profiles()).ToEnv() {
 		env = append(env, kv[0]+"="+kv[1])
 	}
 
@@ -268,10 +275,7 @@ func (o *Orchestrator) runArtifacts(ctx context.Context, req *sandbox.Request) e
 			User:   "0",
 			Labels: containerLabels(req.ID, typeArtifacts),
 		},
-		HostConfig: &container.HostConfig{
-			Mounts:     []mount.Mount{o.workspaceMount(req.ID)},
-			ExtraHosts: o.cfg.ExtraHosts,
-		},
+		HostConfig:       moby.FileAccessHostConfig([]mount.Mount{o.workspaceMount(req.ID)}, o.cfg.ExtraHosts),
 		NetworkingConfig: moby.NetworkingConfig(o.cfg.Network),
 		Name:             artifactsName(req.ID),
 	})
@@ -314,7 +318,7 @@ func (o *Orchestrator) installAgent(ctx, pullCtx context.Context, id string) err
 			User:   "0",
 			Labels: containerLabels(id, typeAgent),
 		},
-		HostConfig: &container.HostConfig{Mounts: []mount.Mount{o.workspaceMount(id)}},
+		HostConfig: moby.FileAccessHostConfig([]mount.Mount{o.workspaceMount(id)}, nil),
 		Name:       agentName(id),
 	})
 	if err != nil {
@@ -359,6 +363,10 @@ func (o *Orchestrator) startWorker(ctx context.Context, p *pool.Spec, req *sandb
 	if command := cmp.Or(req.Command, p.Command); command != "" {
 		cmd = []string{"/bin/sh", "-c", command}
 	}
+	volumeMounts, err := moby.Mounts(ctx, o.client, p.Volumes)
+	if err != nil {
+		return "", err
+	}
 	resp, err := o.client.ContainerCreate(ctx, client.ContainerCreateOptions{
 		Config: &container.Config{
 			Image:      p.Image,
@@ -367,12 +375,7 @@ func (o *Orchestrator) startWorker(ctx context.Context, p *pool.Spec, req *sandb
 			WorkingDir: workspacePath,
 			Labels:     containerLabels(req.ID, typeWorker),
 		},
-		HostConfig: &container.HostConfig{
-			Mounts:     append([]mount.Mount{o.workspaceMount(req.ID)}, moby.Mounts(p.Volumes)...),
-			NanoCPUs:   int64(p.CPU * 1e9),
-			Memory:     int64(p.Memory) * 1024 * 1024,
-			ExtraHosts: o.cfg.ExtraHosts,
-		},
+		HostConfig:       moby.WorkloadHostConfig(append([]mount.Mount{o.workspaceMount(req.ID)}, volumeMounts...), p.CPU, p.Memory, o.cfg.ExtraHosts),
 		NetworkingConfig: moby.NetworkingConfig(o.cfg.Network),
 		Name:             workerName(req.ID),
 	})

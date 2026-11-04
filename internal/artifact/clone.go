@@ -75,10 +75,13 @@ func (h cloneAuth) SetAuth(r *http.Request) {
 // holds at Out — an earlier artifact's output, or a ref that only resolves on
 // the second attempt would take it with it — so the tree is moved into place
 // at the end, merging the way unarchive extracts into an existing directory.
-func (a *Clone) Apply(ctx context.Context, basePath string) *Result {
-	destPath := filepath.Join(basePath, a.Out)
+func (a *Clone) Apply(ctx context.Context, ws *os.Root) *Result {
+	destPath := filepath.Join(ws.Name(), a.Out)
 
-	if err := os.MkdirAll(basePath, 0o755); err != nil {
+	// Created through the workspace root, so a link already on the way to Out
+	// cannot carry the tree out of the workspace. moveTree takes it from
+	// there and never follows a link it lands on.
+	if err := ws.MkdirAll(a.Out, 0o755); err != nil {
 		return &Result{Status: "failed", Error: fmt.Errorf("failed to create directory: %w", err)}
 	}
 
@@ -86,7 +89,7 @@ func (a *Clone) Apply(ctx context.Context, basePath string) *Result {
 	// destination's parent: that parent is the workspace itself when Out is
 	// ".", and a scratch directory above the workspace could land on another
 	// filesystem, where moving the tree into place would stop being a rename.
-	workPath, err := os.MkdirTemp(basePath, ".clone-*")
+	workPath, err := os.MkdirTemp(ws.Name(), ".clone-*")
 	if err != nil {
 		return &Result{Status: "failed", Error: fmt.Errorf("failed to create the clone directory: %w", err)}
 	}

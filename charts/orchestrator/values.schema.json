@@ -871,6 +871,9 @@
         },
         "secretKey": {
           "type": "string"
+        },
+        "allowUnauthenticated": {
+          "type": "boolean"
         }
       }
     },

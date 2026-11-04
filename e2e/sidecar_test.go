@@ -104,8 +104,7 @@ func TestSidecar_FullFlow(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	reporter := sidecar.NewHTTPSink(jobID, orchestratorServer.URL, "", 30*time.Second,
-		"http://example.com/callback", "", []string{"orchestrator.job.artifact"}, nil)
+	reporter := sidecar.NewHTTPSink(jobID, orchestratorServer.URL, "", 30*time.Second)
 
 	runner := sidecar.NewRunner(jobID, sharedDir, 60,
 		sidecar.WithArtifactListener(reporter),
@@ -142,12 +141,6 @@ func TestSidecar_FullFlow(t *testing.T) {
 	}
 	if r.Status != "success" {
 		t.Errorf("Status: got %q, want %q", r.Status, "success")
-	}
-	if r.CallbackURL != "http://example.com/callback" {
-		t.Errorf("CallbackURL: got %q, want %q", r.CallbackURL, "http://example.com/callback")
-	}
-	if len(r.CallbackEvents) != 1 || r.CallbackEvents[0] != "orchestrator.job.artifact" {
-		t.Errorf("CallbackEvents: got %v, want [orchestrator.job.artifact]", r.CallbackEvents)
 	}
 }
 
@@ -215,7 +208,7 @@ func TestSidecar_InputDownload(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	reporter := sidecar.NewHTTPSink(jobID, orchestratorServer.URL, "", 30*time.Second, "", "", nil, nil)
+	reporter := sidecar.NewHTTPSink(jobID, orchestratorServer.URL, "", 30*time.Second)
 
 	runner := sidecar.NewRunner(jobID, sharedDir, 60,
 		sidecar.WithArtifactListener(reporter),
@@ -336,7 +329,7 @@ func TestSidecar_OutputUpload(t *testing.T) {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	reporter := sidecar.NewHTTPSink(jobID, orchestratorServer.URL, "", 30*time.Second, "", "", nil, nil)
+	reporter := sidecar.NewHTTPSink(jobID, orchestratorServer.URL, "", 30*time.Second)
 
 	runner := sidecar.NewRunner(jobID, sharedDir, 60,
 		sidecar.WithArtifactListener(reporter),

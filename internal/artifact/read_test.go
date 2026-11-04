@@ -30,7 +30,7 @@ func TestRead_Apply_JSON(t *testing.T) {
 		Format: "json",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -56,7 +56,7 @@ func TestRead_Apply_DefaultIsString(t *testing.T) {
 		In: "result.json",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -81,7 +81,7 @@ func TestRead_Apply_InvalidJSON(t *testing.T) {
 		Format: "json",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Status != "failed" || result.Error == nil {
 		t.Fatalf("Expected failure for invalid JSON, got status %q, error %v", result.Status, result.Error)
 	}
@@ -97,7 +97,7 @@ func TestRead_Apply_PlainText(t *testing.T) {
 		In: "result.txt",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}

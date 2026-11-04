@@ -2,11 +2,13 @@ package artifact
 
 import (
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"orchestrator/internal/config"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -181,7 +183,7 @@ func TestDownload_ApplyS3(t *testing.T) {
 	tmp := t.TempDir()
 	a := &Download{ID: "d", In: "s3://bucket/dir/key.txt", Out: "out.txt"}
 	a.SetS3Profiles(config.S3Profiles{"": creds})
-	if res := a.Apply(t.Context(), tmp); res.Error != nil {
+	if res := a.Apply(t.Context(), workspace(t, tmp)); res.Error != nil {
 		t.Fatalf("Apply() error = %v", res.Error)
 	}
 
@@ -204,7 +206,7 @@ func TestDownload_ApplyS3(t *testing.T) {
 // credentials fails clearly instead of sending an unsigned request.
 func TestDownload_ApplyS3_NoCreds(t *testing.T) {
 	a := &Download{ID: "d", In: "s3://bucket/key", Out: "out.txt"}
-	res := a.Apply(t.Context(), t.TempDir())
+	res := a.Apply(t.Context(), workspace(t, t.TempDir()))
 	if res.Error == nil {
 		t.Fatal("expected failure without S3 credentials")
 	}
@@ -235,7 +237,7 @@ func TestUpload_ApplyS3(t *testing.T) {
 
 	a := &Upload{ID: "u", In: "in.txt", Out: "s3://bucket/key.txt"}
 	a.SetS3Profiles(config.S3Profiles{"": creds})
-	if res := a.Apply(t.Context(), tmp); res.Error != nil {
+	if res := a.Apply(t.Context(), workspace(t, tmp)); res.Error != nil {
 		t.Fatalf("Apply() error = %v", res.Error)
 	}
 
@@ -282,7 +284,7 @@ func TestUpload_ApplyS3_RetryRehashesBody(t *testing.T) {
 
 	a := &Upload{ID: "u", In: "in.txt", Out: "s3://bucket/key.txt"}
 	a.SetS3Profiles(config.S3Profiles{"": creds})
-	if res := a.Apply(t.Context(), tmp); res.Error != nil {
+	if res := a.Apply(t.Context(), workspace(t, tmp)); res.Error != nil {
 		t.Fatalf("Apply() error = %v", res.Error)
 	}
 
@@ -294,5 +296,36 @@ func TestUpload_ApplyS3_RetryRehashesBody(t *testing.T) {
 	}
 	if lastHash == "" || lastHash == emptyPayloadHash {
 		t.Errorf("retried X-Amz-Content-Sha256 = %q, want the file's content hash", lastHash)
+	}
+}
+
+func TestS3ProfilesFor(t *testing.T) {
+	profiles := config.S3Profiles{
+		"":        {AccessKeyID: "default", SecretAccessKey: "s"},
+		"archive": {AccessKeyID: "archive", SecretAccessKey: "s"},
+		"backups": {AccessKeyID: "backups", SecretAccessKey: "s"},
+	}
+	for _, tc := range []struct {
+		name      string
+		artifacts []Artifact
+		want      []string
+	}{
+		{"no artifacts", nil, nil},
+		{"http only", []Artifact{
+			&Download{ID: "d", In: "https://example.test/x", Out: "out"},
+			&Upload{ID: "u", In: "out", Out: "https://example.test/put"},
+			&Read{ID: "r", In: "out"},
+		}, nil},
+		{"default download", []Artifact{&Download{ID: "d", In: "s3://bucket/key", Out: "out"}}, []string{""}},
+		{"named upload, mixed case scheme", []Artifact{&Upload{ID: "u", In: "out", Out: "S3://archive@bucket/key"}}, []string{"archive"}},
+		{"synced mount", []Artifact{&Mount{ID: "m", In: "img", Out: "work", Sync: "s3://backups@bucket/delta.tgz"}}, []string{"backups"}},
+		{"unknown profile", []Artifact{&Download{ID: "d", In: "s3://nope@bucket/key", Out: "out"}}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := slices.Sorted(maps.Keys(S3ProfilesFor(tc.artifacts, profiles)))
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("profiles = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

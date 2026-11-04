@@ -23,7 +23,7 @@ func archiveSquashfs(t *testing.T, compression string) string {
 	os.WriteFile(filepath.Join(srcDir, "sub", "nested.txt"), []byte("nested"), 0o644)
 
 	arc := &Archive{ID: "a", In: "src", Out: "out.sqfs", Format: "squashfs", Compression: compression}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 	return filepath.Join(tmpDir, "out.sqfs")
@@ -96,7 +96,7 @@ func TestArchive_Squashfs_SingleFile(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, "solo.txt"), []byte("solo content"), 0o644)
 
 	arc := &Archive{ID: "a", In: "solo.txt", Out: "out.sqfs", Format: "squashfs"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 
@@ -115,7 +115,7 @@ func TestArchive_Squashfs_InvalidCompression(t *testing.T) {
 	os.MkdirAll(filepath.Join(tmpDir, "src"), 0o755)
 
 	arc := &Archive{ID: "a", In: "src", Out: "out.sqfs", Format: "squashfs", Compression: "brotli"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error == nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error == nil {
 		t.Error("expected error for unsupported compression")
 	}
 }
@@ -131,7 +131,7 @@ func TestArchive_Squashfs_ApplyRejectsBadBlockSize(t *testing.T) {
 		os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("hello"), 0o644)
 
 		arc := &Archive{ID: "a", In: "src", Out: "out.sqfs", Format: "squashfs", BlockSize: bs}
-		if r := arc.Apply(t.Context(), tmpDir); r.Error == nil {
+		if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error == nil {
 			t.Errorf("blockSize %d: expected Apply to fail, got success", bs)
 		}
 	}
@@ -156,7 +156,7 @@ func TestArchive_Squashfs_BlockSize(t *testing.T) {
 			os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("hello"), 0o644)
 
 			arc := &Archive{ID: "a", In: "src", Out: "out.sqfs", Format: "squashfs", BlockSize: tc.set}
-			if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+			if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 				t.Fatalf("archive Apply() error = %v", r.Error)
 			}
 
@@ -182,12 +182,12 @@ func TestUnarchive_ExtractsSquashfs(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "sub", "nested.txt"), []byte("nested"), 0o644)
 
 	arc := &Archive{ID: "a", In: "src", Out: "data.sqfs", Format: "squashfs"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 
 	un := &Unarchive{ID: "u", In: "data.sqfs", Out: "extracted"}
-	if r := un.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := un.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("unarchive Apply() error = %v", r.Error)
 	}
 
@@ -208,12 +208,12 @@ func TestUnarchive_ExtractsSquashfs_Strip(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "repo", "sub", "nested.txt"), []byte("nested"), 0o644)
 
 	arc := &Archive{ID: "a", In: "src", Out: "data.sqfs", Format: "squashfs"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 
 	un := &Unarchive{ID: "u", In: "data.sqfs", Out: "extracted", Strip: true}
-	if r := un.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := un.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("unarchive Apply() error = %v", r.Error)
 	}
 
@@ -237,12 +237,12 @@ func TestUnarchive_ExtractsSquashfs_Strip_Flat(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "file.txt"), []byte("hello"), 0o644)
 
 	arc := &Archive{ID: "a", In: "src", Out: "data.sqfs", Format: "squashfs"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 
 	un := &Unarchive{ID: "u", In: "data.sqfs", Out: "extracted", Strip: true}
-	if r := un.Apply(t.Context(), tmpDir); r.Error == nil {
+	if r := un.Apply(t.Context(), workspace(t, tmpDir)); r.Error == nil {
 		t.Fatal("expected error for strip on a flat image, got success")
 	}
 }
@@ -256,12 +256,12 @@ func TestUnarchive_ExtractsSquashfs_Subdir(t *testing.T) {
 	os.WriteFile(filepath.Join(srcDir, "sub", "nested.txt"), []byte("nested"), 0o644)
 
 	arc := &Archive{ID: "a", In: "src", Out: "data.sqfs", Format: "squashfs"}
-	if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("archive Apply() error = %v", r.Error)
 	}
 
 	un := &Unarchive{ID: "u", In: "data.sqfs", Out: "extracted", Subdir: "sub"}
-	if r := un.Apply(t.Context(), tmpDir); r.Error != nil {
+	if r := un.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 		t.Fatalf("unarchive Apply() error = %v", r.Error)
 	}
 
@@ -296,11 +296,11 @@ func TestTar_RoundTrip(t *testing.T) {
 			os.WriteFile(filepath.Join(srcDir, "sub", "nested.txt"), []byte("nested"), 0o644)
 
 			arc := &Archive{ID: "a", In: "src", Out: "out.tar", Format: "tar", Compression: tc.compression, Level: tc.level}
-			if r := arc.Apply(t.Context(), tmpDir); r.Error != nil {
+			if r := arc.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 				t.Fatalf("archive Apply() error = %v", r.Error)
 			}
 			un := &Unarchive{ID: "u", In: "out.tar", Out: "extracted"}
-			if r := un.Apply(t.Context(), tmpDir); r.Error != nil {
+			if r := un.Apply(t.Context(), workspace(t, tmpDir)); r.Error != nil {
 				t.Fatalf("unarchive Apply() error = %v", r.Error)
 			}
 
@@ -317,7 +317,7 @@ func TestUnarchive_UnrecognizedFormat(t *testing.T) {
 	os.WriteFile(filepath.Join(tmpDir, "junk.bin"), []byte("not an archive at all"), 0o644)
 
 	un := &Unarchive{ID: "u", In: "junk.bin", Out: "extracted"}
-	if r := un.Apply(t.Context(), tmpDir); r.Error == nil {
+	if r := un.Apply(t.Context(), workspace(t, tmpDir)); r.Error == nil {
 		t.Error("expected error for unrecognized archive format")
 	}
 }

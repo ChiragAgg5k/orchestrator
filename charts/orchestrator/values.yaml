@@ -156,11 +156,13 @@ jobs:
     type: ClusterIP
     port: 8080
   # Bearer-token auth for the API: name a Secret in the release namespace.
-  # Empty leaves the API open. The key also derives the tokens job sidecars
-  # post artifact results with.
+  # The service refuses to start without one unless allowUnauthenticated is
+  # set, for a local cluster only. The key also derives the tokens job
+  # sidecars post artifact results with.
   auth:
     existingSecret: ""
     secretKey: api-key
+    allowUnauthenticated: false
   # Credentials for s3:// artifacts, forwarded into every job sidecar.
   s3:
     enabled: false
@@ -279,6 +281,7 @@ deployments:
   auth:
     existingSecret: ""
     secretKey: api-key
+    allowUnauthenticated: false
   # Credentials for s3:// artifacts, forwarded into the artifact-pre init
   # container and warm-pool pods.
   s3:
@@ -399,6 +402,7 @@ sandbox:
   auth:
     existingSecret: ""
     secretKey: api-key
+    allowUnauthenticated: false
   s3:
     enabled: false
     endpoint: ""

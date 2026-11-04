@@ -10,6 +10,17 @@ jobs:
     requests:
       cpu: 10m
       memory: 32Mi
+  # A local cluster: the planes serve without a key.
+  auth:
+    allowUnauthenticated: true
+
+deployments:
+  auth:
+    allowUnauthenticated: true
+
+sandbox:
+  auth:
+    allowUnauthenticated: true
 
 images:
   jobSidecar:

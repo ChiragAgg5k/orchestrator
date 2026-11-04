@@ -164,7 +164,7 @@ func TestClone_Apply_DefaultBranch(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -181,7 +181,7 @@ func TestClone_Apply_Branch(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src", Ref: "feature"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -196,7 +196,7 @@ func TestClone_Apply_Tag(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src", Ref: "v1"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -211,7 +211,7 @@ func TestClone_Apply_Commit(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src", Ref: feature.String()}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -226,7 +226,7 @@ func TestClone_Apply_Subdir(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src", Subdir: "./app/web/"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -249,7 +249,7 @@ func TestClone_Apply_KeepsExistingDestination(t *testing.T) {
 	writeFixtureFile(t, dest, "main.txt", "stale")
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src", Ref: "v1"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -266,7 +266,7 @@ func TestClone_Apply_RemovesScratchDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src"}
-	if result := a.Apply(t.Context(), tmpDir); result.Error != nil {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
 
@@ -289,7 +289,7 @@ func TestClone_Apply_FailedCloneLeavesDestinationAlone(t *testing.T) {
 	writeFixtureFile(t, dest, "keep.txt", "earlier artifact")
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src", Ref: "no-such-ref"}
-	if result := a.Apply(t.Context(), tmpDir); result.Error == nil {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error == nil {
 		t.Fatal("Apply() expected an error for an unknown ref")
 	}
 
@@ -303,7 +303,7 @@ func TestClone_Apply_WorkspaceRootDestination(t *testing.T) {
 	// "." names the workspace itself: the scratch directory must stay inside
 	// it rather than landing beside it.
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "."}
-	if result := a.Apply(t.Context(), tmpDir); result.Error != nil {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
 
@@ -365,7 +365,7 @@ func TestClone_Apply_SubdirSymlinkOutOfTree(t *testing.T) {
 	writeFixtureFile(t, filepath.Join(tmpDir, "outside"), "secret.txt", "earlier artifact")
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src", Subdir: "escape"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error == nil {
 		t.Fatal("Apply() expected an error for a subdir leaving the cloned tree")
 	}
@@ -380,7 +380,7 @@ func TestClone_Apply_MissingSubdir(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src", Subdir: "missing"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error == nil {
 		t.Fatal("Apply() expected an error for a subdir the tree does not have")
 	}
@@ -391,7 +391,7 @@ func TestClone_Apply_UnknownRef(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	a := &Clone{noShallow: true, ID: "clone", In: fixtureURL, Out: "src", Ref: "no-such-ref"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error == nil {
 		t.Fatal("Apply() expected an error for an unknown ref")
 	}

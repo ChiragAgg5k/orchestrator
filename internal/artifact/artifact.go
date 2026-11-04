@@ -1,6 +1,9 @@
 package artifact
 
-import "context"
+import (
+	"context"
+	"os"
+)
 
 // The post-phase sentinels. An artifact that depends on one of these runs AFTER
 // the workload rather than before it — upload the results, archive the
@@ -26,7 +29,7 @@ type Artifact interface {
 	ArtifactID() string
 	ArtifactType() string
 	DependsOn() string
-	Apply(ctx context.Context, basePath string) *Result
+	Apply(ctx context.Context, root *os.Root) *Result
 }
 
 // Result represents the outcome of applying an artifact.

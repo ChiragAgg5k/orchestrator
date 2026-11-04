@@ -3,6 +3,7 @@ package artifact
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -12,10 +13,10 @@ type stub struct {
 	depends string
 }
 
-func (s *stub) ArtifactID() string                        { return s.id }
-func (s *stub) ArtifactType() string                      { return "stub" }
-func (s *stub) DependsOn() string                         { return s.depends }
-func (s *stub) Apply(_ context.Context, _ string) *Result { return &Result{Status: "success"} }
+func (s *stub) ArtifactID() string                      { return s.id }
+func (s *stub) ArtifactType() string                    { return "stub" }
+func (s *stub) DependsOn() string                       { return s.depends }
+func (s *stub) Apply(context.Context, *os.Root) *Result { return &Result{Status: "success"} }
 
 func TestPartition(t *testing.T) {
 	tests := []struct {

@@ -3,10 +3,15 @@ package docker
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"orchestrator/internal/artifact"
+	"orchestrator/internal/config"
 	"orchestrator/internal/job"
 	"runtime"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/moby/moby/client"
 )
@@ -29,6 +34,7 @@ type watchConfig struct {
 	image     string
 	sidecarID string
 	workerID  string
+	timeout   time.Duration // worker deadline; 0 for none
 	dest      *job.CallbackDest
 }
 
@@ -68,6 +74,7 @@ func watchConfigFromRequest(req *job.Request, h dockerHandle) *watchConfig {
 		image:     req.Image,
 		sidecarID: h.sidecarContainerID,
 		workerID:  h.jobContainerID,
+		timeout:   time.Duration(req.TimeoutSeconds) * time.Second,
 	}
 	if req.Callback != nil && req.Callback.URL != "" {
 		cfg.dest = &job.CallbackDest{
@@ -88,8 +95,19 @@ func watchConfigFromState(cs containerState, h dockerHandle) *watchConfig {
 		image:     cs.workerImage,
 		sidecarID: h.sidecarContainerID,
 		workerID:  h.jobContainerID,
+		timeout:   timeoutFromLabels(cs.workerLabels),
 		dest:      callbackDestFromLabels(cs.workerLabels),
 	}
+}
+
+// timeoutFromLabels reads the worker deadline recorded at creation. Workers
+// created before it was recorded carry none; their sidecar still bounds them.
+func timeoutFromLabels(labels map[string]string) time.Duration {
+	seconds, err := strconv.Atoi(labels["job.timeout"])
+	if err != nil || seconds <= 0 {
+		return 0
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 // callbackDestFromLabels parses callback destination from worker container labels.
@@ -118,4 +136,36 @@ func callbackDestFromLabels(labels map[string]string) *job.CallbackDest {
 		Key:    labels["job.callback.key"],
 		Events: events,
 	}
+}
+
+// sidecarEnv is the job sidecar's environment. It carries what the sidecar
+// needs to run the artifacts and report on them, and nothing about where those
+// reports end up: the callback URL, its signing key and the job's meta stay
+// with the service, which looks them up when a report arrives.
+func sidecarEnv(req *job.Request, artifactEndpoint string) ([]string, error) {
+	env := []string{
+		"JOB_ID=" + req.ID,
+		fmt.Sprintf("TIMEOUT_SECONDS=%d", req.TimeoutSeconds),
+		config.EnvSharedVolume + "=" + req.Workspace,
+	}
+
+	// MarshalArtifacts injects each artifact's "type" field, which the sidecar
+	// needs to unmarshal them back into concrete types.
+	artifactsJSON, err := artifact.MarshalArtifacts(req.Artifacts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal artifacts: %w", err)
+	}
+	env = append(env, "ARTIFACTS_JSON="+string(artifactsJSON))
+
+	if artifactEndpoint != "" {
+		env = append(env, "ARTIFACT_ENDPOINT="+artifactEndpoint)
+	}
+	if req.ArtifactToken != "" {
+		env = append(env, "ARTIFACT_TOKEN="+req.ArtifactToken)
+	}
+
+	for _, kv := range artifact.S3ProfilesFor(req.Artifacts, config.LoadS3Profiles()).ToEnv() {
+		env = append(env, kv[0]+"="+kv[1])
+	}
+	return env, nil
 }

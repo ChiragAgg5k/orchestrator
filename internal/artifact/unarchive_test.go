@@ -66,7 +66,7 @@ func TestUnarchive_Apply(t *testing.T) {
 		Out: "extracted",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -98,7 +98,7 @@ func TestUnarchive_Apply_Subdir(t *testing.T) {
 		Subdir: "functions/node",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -136,7 +136,7 @@ func TestUnarchive_Apply_Subdir_DotSlash(t *testing.T) {
 		Subdir: "./astro/starter/",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -190,7 +190,7 @@ func TestUnarchive_Apply_Subdir_PaxGlobalHeader(t *testing.T) {
 	}
 
 	a := &Unarchive{ID: "ua", In: "test.tar.gz", Out: "extracted", Subdir: "node/starter"}
-	if result := a.Apply(t.Context(), tmpDir); result.Error != nil {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
 
@@ -227,7 +227,7 @@ func TestUnarchive_Apply_Strip(t *testing.T) {
 		Strip: true,
 	}
 
-	if result := a.Apply(t.Context(), tmpDir); result.Error != nil {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
 
@@ -263,7 +263,7 @@ func TestUnarchive_Apply_Strip_Subdir(t *testing.T) {
 		Strip:  true,
 	}
 
-	if result := a.Apply(t.Context(), tmpDir); result.Error != nil {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
 
@@ -294,7 +294,7 @@ func TestUnarchive_Apply_Strip_FlatArchive(t *testing.T) {
 		Strip: true,
 	}
 
-	if result := a.Apply(t.Context(), tmpDir); result.Error == nil {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error == nil {
 		t.Fatal("expected error for strip on a flat archive, got success")
 	}
 }
@@ -316,7 +316,7 @@ func TestUnarchive_Apply_Subdir_NoMatch(t *testing.T) {
 		Subdir: "does/not/exist",
 	}
 
-	if result := a.Apply(t.Context(), tmpDir); result.Error == nil {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error == nil {
 		t.Fatal("expected error for unmatched subdir, got success")
 	}
 }
@@ -355,7 +355,7 @@ func TestUnarchive_Apply_UnwritableDir(t *testing.T) {
 		file.Close()
 
 		a := &Unarchive{ID: "test-unarchive-unwritable", In: "test.tar.gz", Out: "extracted"}
-		if result := a.Apply(t.Context(), tmpDir); result.Error != nil {
+		if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error != nil {
 			t.Fatalf("dir mode %#o: %v", dirMode, result.Error)
 		}
 
@@ -418,7 +418,7 @@ func TestUnarchive_Apply_NormalizesFileModes(t *testing.T) {
 			writeModeArchive(t, tmpDir, tc.mode)
 
 			a := &Unarchive{ID: "test-unarchive-modes", In: "test.tar.gz", Out: "extracted"}
-			if result := a.Apply(t.Context(), tmpDir); result.Error != nil {
+			if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error != nil {
 				t.Fatalf("Apply: %v", result.Error)
 			}
 
@@ -452,7 +452,7 @@ func TestUnarchive_Apply_NormalizesExistingFileMode(t *testing.T) {
 	}
 
 	a := &Unarchive{ID: "test-unarchive-existing-mode", In: "test.tar.gz", Out: "extracted"}
-	if result := a.Apply(t.Context(), tmpDir); result.Error != nil {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error != nil {
 		t.Fatalf("Apply: %v", result.Error)
 	}
 
@@ -479,7 +479,7 @@ func TestUnarchive_Apply_InTraversal(t *testing.T) {
 		Out: "extracted",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error == nil {
 		t.Error("Expected error for path traversal attempt")
 	}
@@ -522,7 +522,7 @@ func createTestArchive(t *testing.T, archiveIn string, files map[string]string) 
 func TestUnarchive_Apply_MissingSource(t *testing.T) {
 	a := &Unarchive{ID: "test-unarchive-missing", In: "source.tar.gz", Out: "extracted"}
 
-	result := a.Apply(t.Context(), t.TempDir())
+	result := a.Apply(t.Context(), workspace(t, t.TempDir()))
 	if result.Error == nil {
 		t.Fatal("expected error for missing source, got success")
 	}
@@ -544,7 +544,7 @@ func TestUnarchive_Apply_EmptySource(t *testing.T) {
 
 	a := &Unarchive{ID: "test-unarchive-empty", In: "source.tar.gz", Out: "extracted"}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error == nil {
 		t.Fatal("expected error for empty source, got success")
 	}
@@ -553,11 +553,10 @@ func TestUnarchive_Apply_EmptySource(t *testing.T) {
 	}
 }
 
-// TestUnarchive_Apply_UnreadableSource covers a source that opens but cannot be
-// read. A directory is the portable way to produce that: os.Open succeeds and
-// the read fails with EISDIR on both Linux and macOS. The read returns n == 0,
-// so discarding its error would misreport a filesystem failure as an empty
-// archive.
+// TestUnarchive_Apply_UnreadableSource covers a source that is not a regular
+// file. A directory is refused when it is opened; before it reached the header
+// read, which returns n == 0, so the failure must not be misreported as an
+// empty or unrecognized archive.
 func TestUnarchive_Apply_UnreadableSource(t *testing.T) {
 	tmpDir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(tmpDir, "source.tar.gz"), 0o755); err != nil {
@@ -566,7 +565,7 @@ func TestUnarchive_Apply_UnreadableSource(t *testing.T) {
 
 	a := &Unarchive{ID: "test-unarchive-unreadable", In: "source.tar.gz", Out: "extracted"}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error == nil {
 		t.Fatal("expected error for unreadable source, got success")
 	}
@@ -575,8 +574,8 @@ func TestUnarchive_Apply_UnreadableSource(t *testing.T) {
 			t.Errorf("read failure misreported as %q: %v", wrong, result.Error)
 		}
 	}
-	if !strings.Contains(result.Error.Error(), "failed to read archive header") {
-		t.Errorf("expected the error to name the failed header read, got %v", result.Error)
+	if !strings.Contains(result.Error.Error(), "not a regular file") {
+		t.Errorf("expected the error to name the non-regular source, got %v", result.Error)
 	}
 }
 
@@ -641,7 +640,7 @@ func TestUnarchive_Apply_PreservesSymlinks(t *testing.T) {
 	)
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 
@@ -672,7 +671,7 @@ func TestUnarchive_Apply_PreservesHardLinks(t *testing.T) {
 	)
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 
@@ -700,7 +699,7 @@ func TestUnarchive_Apply_PreservesExternalSymlinks(t *testing.T) {
 			createLinkArchive(t, archiveIn, map[string]string{"keep.txt": "x"}, symlinks, nil)
 
 			a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-			result := a.Apply(t.Context(), tmpDir)
+			result := a.Apply(t.Context(), workspace(t, tmpDir))
 			if result.Status != "success" {
 				t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 			}
@@ -732,7 +731,7 @@ func TestUnarchive_Apply_ContainedPolicySkipsExternalSymlinks(t *testing.T) {
 	createLinkArchive(t, archiveIn, map[string]string{"keep.txt": "x"}, links, nil)
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out", SymlinkPolicy: SymlinkPolicyContained}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 	for name := range links {
@@ -760,7 +759,7 @@ func TestUnarchive_Apply_PreservesRuntimePythonInterpreterSymlinks(t *testing.T)
 	)
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 	for name, want := range links {
@@ -789,7 +788,7 @@ func TestUnarchive_Apply_PreservePolicyDoesNotInspectSymlinkNames(t *testing.T) 
 			createLinkArchive(t, archiveIn, map[string]string{"keep.txt": "x"}, link, nil)
 
 			a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-			if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+			if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 				t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 			}
 			for path, want := range link {
@@ -816,7 +815,7 @@ func TestUnarchive_Apply_ExternalSymlinkCannotRedirectWrite(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Status != "failed" || result.Error == nil || !strings.Contains(result.Error.Error(), "archive path traverses a symlink") {
 		t.Fatalf("expected symlink traversal failure, got status=%v error=%v", result.Status, result.Error)
 	}
@@ -831,7 +830,7 @@ func TestUnarchive_Apply_RejectsEscapingHardLink(t *testing.T) {
 		map[string]string{"evil": "../../../../etc/passwd"})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "failed" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "failed" {
 		t.Fatalf("expected failure for an escaping hard link, got %v", result.Status)
 	}
 	if _, err := os.Lstat(filepath.Join(tmpDir, "out", "evil")); err == nil {
@@ -854,7 +853,7 @@ func TestUnarchive_Apply_ChainedSymlinkCannotRedirectWrite(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Status != "failed" || result.Error == nil || !strings.Contains(result.Error.Error(), "archive path traverses a symlink") {
 		t.Fatalf("expected symlink traversal failure, got status=%v error=%v", result.Status, result.Error)
 	}
@@ -878,7 +877,7 @@ func TestUnarchive_Apply_RejectsSymlinkedParentBeforeWriting(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Status != "failed" || result.Error == nil || !strings.Contains(result.Error.Error(), "archive path traverses a symlink") {
 		t.Fatalf("expected symlink traversal failure, got status=%v error=%v", result.Status, result.Error)
 	}
@@ -903,7 +902,7 @@ func TestUnarchive_Apply_SkippedLinkLeavesExistingFileIntact(t *testing.T) {
 	createLinkArchive(t, archiveIn, nil, map[string]string{"keep.txt": "/etc/passwd"}, nil)
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out", SymlinkPolicy: SymlinkPolicyContained}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 	content, err := os.ReadFile(existing)
@@ -927,7 +926,7 @@ func TestUnarchive_Apply_HardLinkHonoursStrip(t *testing.T) {
 	)
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out", Strip: true}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 	content, err := os.ReadFile(filepath.Join(tmpDir, "out", "pkg", "linked.js"))
@@ -994,7 +993,7 @@ func TestUnarchive_Apply_SkipsSymlinkChainThroughParent(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 	if _, err := os.Stat(filepath.Join(tmpDir, "pwned")); err == nil {
@@ -1017,7 +1016,7 @@ func TestUnarchive_Apply_ReplacesSymlinkWithRegularFile(t *testing.T) {
 	)
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 	// The symlink's target must be untouched by the later regular-file entry.
@@ -1046,7 +1045,7 @@ func TestUnarchive_Apply_MissingHardLinkSourceKeepsDestination(t *testing.T) {
 	createLinkArchive(t, archiveIn, nil, nil, map[string]string{"keep.txt": "never/written.js"})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "failed" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "failed" {
 		t.Fatalf("expected failure for a missing hard link source, got %v", result.Status)
 	}
 	content, err := os.ReadFile(existing)
@@ -1078,7 +1077,7 @@ func TestUnarchive_Apply_HardLinkToDirectoryKeepsDestination(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "failed" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "failed" {
 		t.Fatalf("expected failure for a directory hard-link source, got %v", result.Status)
 	}
 	content, err := os.ReadFile(existing)
@@ -1101,7 +1100,7 @@ func TestUnarchive_Apply_SelfHardLinkKeepsSource(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "failed" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "failed" {
 		t.Fatalf("expected failure for a self-referential hard link, got %v", result.Status)
 	}
 	content, err := os.ReadFile(filepath.Join(tmpDir, "out", "keep.txt"))
@@ -1128,7 +1127,7 @@ func TestUnarchive_Apply_PrunesSymlinkMadeEscapingByLaterEntry(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out", SymlinkPolicy: SymlinkPolicyContained}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
@@ -1151,7 +1150,7 @@ func TestUnarchive_Apply_HardLinkViaSymlinkAliasKeepsData(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "failed" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "failed" {
 		t.Fatalf("expected failure for a hard link aliasing its own destination, got %v", result.Status)
 	}
 	content, err := os.ReadFile(filepath.Join(tmpDir, "out", "real.txt"))
@@ -1178,7 +1177,7 @@ func TestUnarchive_Apply_SweepsEscapeAfterSkippingUnsafeEntry(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out", SymlinkPolicy: SymlinkPolicyContained}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 	if _, err := os.Lstat(filepath.Join(tmpDir, "out", "x")); err == nil {
@@ -1197,7 +1196,7 @@ func TestUnarchive_Apply_RejectsHardLinkToDanglingSymlink(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "failed" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "failed" {
 		t.Fatalf("expected failure for a hard link to a dangling alias, got %v", result.Status)
 	}
 	// Nothing self-referential may be left behind.
@@ -1221,7 +1220,7 @@ func TestUnarchive_Apply_SweepRemovesLateEscape(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out", SymlinkPolicy: SymlinkPolicyContained}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 
 	if result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
@@ -1285,7 +1284,7 @@ func TestUnarchive_Apply_SweepsEscapeAlongsideExtractionFailure(t *testing.T) {
 	})
 
 	a := &Unarchive{ID: "u", In: "code.tar.gz", Out: "out", SymlinkPolicy: SymlinkPolicyContained}
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Status != "failed" {
 		t.Fatalf("expected failure, got %v", result.Status)
 	}
