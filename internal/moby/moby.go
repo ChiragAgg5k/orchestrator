@@ -84,24 +84,46 @@ func NetworkingConfig(name string) *network.NetworkingConfig {
 	}
 }
 
-// WorkloadSecurity is the Docker counterpart of kube.WorkloadSecurityContext,
+// Process caps. A build spawns compilers and bundlers, far below what
+// exhausts the host; the artifact sidecar is a single Go process.
+const (
+	workloadPidsLimit   = 16384
+	fileAccessPidsLimit = 1024
+)
+
+// WorkloadHostConfig is the Docker counterpart of kube.WorkloadSecurityContext,
 // for a container running the user's own command (a build, a deployment, a
 // sandbox): it keeps the image's user and a writable filesystem, since
 // installers run as root and write everywhere, but drops CAP_NET_RAW — on a
-// shared bridge a raw socket reaches neighbouring containers' traffic — and
-// forbids gaining privileges through setuid binaries. The daemon applies its
-// default seccomp profile on its own.
-func WorkloadSecurity(hc *container.HostConfig) {
-	hc.CapDrop = append(hc.CapDrop, "NET_RAW")
-	hc.SecurityOpt = append(hc.SecurityOpt, "no-new-privileges")
+// shared bridge a raw socket reaches neighbouring containers' traffic —
+// forbids gaining privileges through setuid binaries and caps the process
+// count. The daemon applies its default seccomp profile on its own.
+func WorkloadHostConfig(mounts []mount.Mount, cpu float64, memoryMiB int, extraHosts []string) *container.HostConfig {
+	pids := int64(workloadPidsLimit)
+	return &container.HostConfig{
+		Mounts:      mounts,
+		NanoCPUs:    int64(cpu * 1e9),
+		Memory:      int64(memoryMiB) * 1024 * 1024,
+		PidsLimit:   &pids,
+		ExtraHosts:  extraHosts,
+		CapDrop:     []string{"NET_RAW"},
+		SecurityOpt: []string{"no-new-privileges"},
+	}
 }
 
-// FileAccessSecurity is the Docker counterpart of
-// kube.FileAccessSecurityContext, for the artifact sidecar: root with only the
-// capabilities needed to read, write and re-own files of any owner or mode in
-// the shared workspace, and no privilege gain.
-func FileAccessSecurity(hc *container.HostConfig) {
-	hc.CapDrop = append(hc.CapDrop, "ALL")
-	hc.CapAdd = append(hc.CapAdd, "CHOWN", "DAC_OVERRIDE", "FOWNER")
-	hc.SecurityOpt = append(hc.SecurityOpt, "no-new-privileges")
+// FileAccessHostConfig is the Docker counterpart of
+// kube.FileAccessSecurityContext, for the artifact sidecar and anything else
+// that only moves files in the shared workspace: root with only the
+// capabilities needed to read, write and re-own files of any owner or mode,
+// and no privilege gain.
+func FileAccessHostConfig(mounts []mount.Mount, extraHosts []string) *container.HostConfig {
+	pids := int64(fileAccessPidsLimit)
+	return &container.HostConfig{
+		Mounts:      mounts,
+		PidsLimit:   &pids,
+		ExtraHosts:  extraHosts,
+		CapDrop:     []string{"ALL"},
+		CapAdd:      []string{"CHOWN", "DAC_OVERRIDE", "FOWNER"},
+		SecurityOpt: []string{"no-new-privileges"},
+	}
 }

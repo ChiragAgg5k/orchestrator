@@ -277,10 +277,7 @@ func (o *Orchestrator) runArtifacts(ctx context.Context, req *sandbox.Request) e
 			User:   "0",
 			Labels: containerLabels(req.ID, typeArtifacts),
 		},
-		HostConfig: &container.HostConfig{
-			Mounts:     []mount.Mount{o.workspaceMount(req.ID)},
-			ExtraHosts: o.cfg.ExtraHosts,
-		},
+		HostConfig:       moby.FileAccessHostConfig([]mount.Mount{o.workspaceMount(req.ID)}, o.cfg.ExtraHosts),
 		NetworkingConfig: moby.NetworkingConfig(o.cfg.Network),
 		Name:             artifactsName(req.ID),
 	})
@@ -323,7 +320,7 @@ func (o *Orchestrator) installAgent(ctx, pullCtx context.Context, id string) err
 			User:   "0",
 			Labels: containerLabels(id, typeAgent),
 		},
-		HostConfig: &container.HostConfig{Mounts: []mount.Mount{o.workspaceMount(id)}},
+		HostConfig: moby.FileAccessHostConfig([]mount.Mount{o.workspaceMount(id)}, nil),
 		Name:       agentName(id),
 	})
 	if err != nil {
@@ -347,21 +344,6 @@ func (o *Orchestrator) installAgent(ctx, pullCtx context.Context, id string) err
 
 // startWorker runs the pool's image with the sandbox's command, returning the
 // container's address on the configured network.
-// workerHostConfig is a sandbox worker's host configuration: its mounts, CPU
-// and memory, under the workload hardening every user command runs with.
-func workerHostConfig(mounts []mount.Mount, cpu float64, memory int, extraHosts []string) *container.HostConfig {
-	hc := &container.HostConfig{
-		Mounts: mounts,
-		Resources: container.Resources{
-			NanoCPUs: int64(cpu * 1e9),
-			Memory:   int64(memory) * 1024 * 1024,
-		},
-		ExtraHosts: extraHosts,
-	}
-	moby.WorkloadSecurity(hc)
-	return hc
-}
-
 func (o *Orchestrator) startWorker(ctx context.Context, p *pool.Spec, req *sandbox.Request) (string, error) {
 	// The agent's own settings first, so a pool or request can override them.
 	env := []string{
@@ -395,7 +377,7 @@ func (o *Orchestrator) startWorker(ctx context.Context, p *pool.Spec, req *sandb
 			WorkingDir: workspacePath,
 			Labels:     containerLabels(req.ID, typeWorker),
 		},
-		HostConfig:       workerHostConfig(append([]mount.Mount{o.workspaceMount(req.ID)}, volumeMounts...), p.CPU, p.Memory, o.cfg.ExtraHosts),
+		HostConfig:       moby.WorkloadHostConfig(append([]mount.Mount{o.workspaceMount(req.ID)}, volumeMounts...), p.CPU, p.Memory, o.cfg.ExtraHosts),
 		NetworkingConfig: moby.NetworkingConfig(o.cfg.Network),
 		Name:             workerName(req.ID),
 	})
