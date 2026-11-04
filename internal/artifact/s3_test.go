@@ -2,11 +2,13 @@ package artifact
 
 import (
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"orchestrator/internal/config"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -297,24 +299,33 @@ func TestUpload_ApplyS3_RetryRehashesBody(t *testing.T) {
 	}
 }
 
-func TestUsesS3(t *testing.T) {
-	s3 := []Artifact{&Download{ID: "d", In: "s3://bucket/key", Out: "out"}}
-	if !UsesS3(s3) {
-		t.Error("UsesS3(s3 download) = false, want true")
+func TestS3ProfilesFor(t *testing.T) {
+	profiles := config.S3Profiles{
+		"":        {AccessKeyID: "default", SecretAccessKey: "s"},
+		"archive": {AccessKeyID: "archive", SecretAccessKey: "s"},
+		"backups": {AccessKeyID: "backups", SecretAccessKey: "s"},
 	}
-	upS3 := []Artifact{&Upload{ID: "u", In: "out", Out: "S3://bucket/key"}}
-	if !UsesS3(upS3) {
-		t.Error("UsesS3(s3 upload, mixed case) = false, want true")
-	}
-	httpOnly := []Artifact{
-		&Download{ID: "d", In: "https://example.test/x", Out: "out"},
-		&Upload{ID: "u", In: "out", Out: "https://example.test/put"},
-		&Read{ID: "r", In: "out"},
-	}
-	if UsesS3(httpOnly) {
-		t.Error("UsesS3(http only) = true, want false")
-	}
-	if UsesS3(nil) {
-		t.Error("UsesS3(nil) = true, want false")
+	for _, tc := range []struct {
+		name      string
+		artifacts []Artifact
+		want      []string
+	}{
+		{"no artifacts", nil, nil},
+		{"http only", []Artifact{
+			&Download{ID: "d", In: "https://example.test/x", Out: "out"},
+			&Upload{ID: "u", In: "out", Out: "https://example.test/put"},
+			&Read{ID: "r", In: "out"},
+		}, nil},
+		{"default download", []Artifact{&Download{ID: "d", In: "s3://bucket/key", Out: "out"}}, []string{""}},
+		{"named upload, mixed case scheme", []Artifact{&Upload{ID: "u", In: "out", Out: "S3://archive@bucket/key"}}, []string{"archive"}},
+		{"synced mount", []Artifact{&Mount{ID: "m", In: "img", Out: "work", Sync: "s3://backups@bucket/delta.tgz"}}, []string{"backups"}},
+		{"unknown profile", []Artifact{&Download{ID: "d", In: "s3://nope@bucket/key", Out: "out"}}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := slices.Sorted(maps.Keys(S3ProfilesFor(tc.artifacts, profiles)))
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("profiles = %q, want %q", got, tc.want)
+			}
+		})
 	}
 }

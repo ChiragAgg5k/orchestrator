@@ -263,10 +263,8 @@ func (o *Orchestrator) runArtifacts(ctx context.Context, req *sandbox.Request) e
 	if o.cfg.ArtifactEndpoint != "" {
 		env = append(env, "ARTIFACT_ENDPOINT="+o.cfg.ArtifactEndpoint)
 	}
-	if artifact.UsesS3(req.Artifacts) {
-		for _, kv := range config.LoadS3Profiles().ToEnv() {
-			env = append(env, kv[0]+"="+kv[1])
-		}
+	for _, kv := range artifact.S3ProfilesFor(req.Artifacts, config.LoadS3Profiles()).ToEnv() {
+		env = append(env, kv[0]+"="+kv[1])
 	}
 
 	resp, err := o.client.ContainerCreate(ctx, client.ContainerCreateOptions{
