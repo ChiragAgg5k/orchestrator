@@ -33,7 +33,7 @@ func TestList_Apply(t *testing.T) {
 		In: "src",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -63,7 +63,7 @@ func TestList_Apply_WithExcludes(t *testing.T) {
 		Excludes: []string{"node_modules"},
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -92,7 +92,7 @@ func TestList_Apply_NonRecursive(t *testing.T) {
 		IsRecursive: &recursive,
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}

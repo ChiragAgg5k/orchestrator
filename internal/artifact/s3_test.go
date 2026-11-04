@@ -181,7 +181,7 @@ func TestDownload_ApplyS3(t *testing.T) {
 	tmp := t.TempDir()
 	a := &Download{ID: "d", In: "s3://bucket/dir/key.txt", Out: "out.txt"}
 	a.SetS3Profiles(config.S3Profiles{"": creds})
-	if res := a.Apply(t.Context(), tmp); res.Error != nil {
+	if res := a.Apply(t.Context(), workspace(t, tmp)); res.Error != nil {
 		t.Fatalf("Apply() error = %v", res.Error)
 	}
 
@@ -204,7 +204,7 @@ func TestDownload_ApplyS3(t *testing.T) {
 // credentials fails clearly instead of sending an unsigned request.
 func TestDownload_ApplyS3_NoCreds(t *testing.T) {
 	a := &Download{ID: "d", In: "s3://bucket/key", Out: "out.txt"}
-	res := a.Apply(t.Context(), t.TempDir())
+	res := a.Apply(t.Context(), workspace(t, t.TempDir()))
 	if res.Error == nil {
 		t.Fatal("expected failure without S3 credentials")
 	}
@@ -235,7 +235,7 @@ func TestUpload_ApplyS3(t *testing.T) {
 
 	a := &Upload{ID: "u", In: "in.txt", Out: "s3://bucket/key.txt"}
 	a.SetS3Profiles(config.S3Profiles{"": creds})
-	if res := a.Apply(t.Context(), tmp); res.Error != nil {
+	if res := a.Apply(t.Context(), workspace(t, tmp)); res.Error != nil {
 		t.Fatalf("Apply() error = %v", res.Error)
 	}
 
@@ -282,7 +282,7 @@ func TestUpload_ApplyS3_RetryRehashesBody(t *testing.T) {
 
 	a := &Upload{ID: "u", In: "in.txt", Out: "s3://bucket/key.txt"}
 	a.SetS3Profiles(config.S3Profiles{"": creds})
-	if res := a.Apply(t.Context(), tmp); res.Error != nil {
+	if res := a.Apply(t.Context(), workspace(t, tmp)); res.Error != nil {
 		t.Fatalf("Apply() error = %v", res.Error)
 	}
 

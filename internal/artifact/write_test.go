@@ -26,7 +26,7 @@ func TestWrite_Apply(t *testing.T) {
 		Out: "config.json",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -49,7 +49,7 @@ func TestWrite_Apply_CreatesDirectory(t *testing.T) {
 		Out: "subdir/nested/file.txt",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}

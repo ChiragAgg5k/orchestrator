@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -23,13 +24,7 @@ func (a *List) ArtifactType() string { return "list" }
 func (a *List) DependsOn() string    { return a.Depends }
 
 // Apply lists files in a directory.
-func (a *List) Apply(ctx context.Context, basePath string) *Result {
-	root, err := openWorkspace(basePath)
-	if err != nil {
-		return &Result{Status: "failed", Error: err}
-	}
-	defer root.Close()
-
+func (a *List) Apply(ctx context.Context, root *os.Root) *Result {
 	recursive := a.IsRecursive == nil || *a.IsRecursive
 
 	info, err := root.Stat(a.In)
@@ -75,7 +70,7 @@ func (a *List) Apply(ctx context.Context, basePath string) *Result {
 		}
 	}
 
-	slog.Debug("Listed files", "path", filepath.Join(basePath, a.In), "count", len(files), "recursive", recursive)
+	slog.Debug("Listed files", "path", filepath.Join(root.Name(), a.In), "count", len(files), "recursive", recursive)
 	return &Result{Status: "success", Content: files}
 }
 

@@ -97,13 +97,7 @@ func gzipLevel(level int) int {
 }
 
 // Apply creates the archive in the configured format.
-func (a *Archive) Apply(ctx context.Context, basePath string) *Result {
-	root, err := openWorkspace(basePath)
-	if err != nil {
-		return &Result{Status: "failed", Error: err}
-	}
-	defer root.Close()
-
+func (a *Archive) Apply(ctx context.Context, root *os.Root) *Result {
 	switch a.Format {
 	case "tar":
 		return a.applyTar(root)

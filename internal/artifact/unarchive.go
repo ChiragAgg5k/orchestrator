@@ -400,13 +400,7 @@ func underRoot(candidate, root string) bool {
 // subdirectory are extracted, with the subdir prefix stripped; with Strip
 // the subdir is resolved against the unwrapped tree, without it (legacy) a
 // tar's detected root folder is implicitly prepended to the subdir.
-func (a *Unarchive) Apply(ctx context.Context, basePath string) *Result {
-	root, err := openWorkspace(basePath)
-	if err != nil {
-		return &Result{Status: "failed", Error: err}
-	}
-	defer root.Close()
-
+func (a *Unarchive) Apply(ctx context.Context, root *os.Root) *Result {
 	// Read enough to cover every magic we sniff. squashfs "hsqs" sits at offset
 	// 0 and tar "ustar" at 257, but erofs's magic is at offset 1024 — so read
 	// past it (1028 bytes) rather than the 512 the tar/squashfs checks needed.
@@ -440,8 +434,8 @@ func (a *Unarchive) Apply(ctx context.Context, basePath string) *Result {
 	if err := root.MkdirAll(a.Out, extractDirMode); err != nil {
 		return &Result{Status: "failed", Error: fmt.Errorf("failed to create destination: %w", err)}
 	}
-	srcPath := filepath.Join(basePath, a.In)
-	destDir := filepath.Join(basePath, a.Out)
+	srcPath := filepath.Join(root.Name(), a.In)
+	destDir := filepath.Join(root.Name(), a.Out)
 
 	format, compression := Classify(header)
 

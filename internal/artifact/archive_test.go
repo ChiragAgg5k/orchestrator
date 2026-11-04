@@ -66,7 +66,7 @@ func TestArchive_Apply_PreservesSymlinkWithoutFollowing(t *testing.T) {
 	}
 
 	a := &Archive{ID: "a", In: "source", Out: "output.tar", Format: "tar"}
-	if result := a.Apply(t.Context(), tmpDir); result.Status != "success" {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Status != "success" {
 		t.Fatalf("Apply() = %v, error = %v", result.Status, result.Error)
 	}
 
@@ -110,7 +110,7 @@ func TestArchive_Apply(t *testing.T) {
 		Format: "tar",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -130,7 +130,7 @@ func TestArchive_Apply_InvalidFormat(t *testing.T) {
 		Format: "zip",
 	}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error == nil {
 		t.Error("Expected error for unsupported format")
 	}

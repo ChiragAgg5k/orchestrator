@@ -8,14 +8,14 @@ import (
 	"syscall"
 )
 
-// openWorkspace opens the workspace as an os.Root. Every artifact resolves its
-// in and out paths through it, so a path can only ever name something inside
-// the workspace: a symlink whose target leaves it fails instead of being
+// OpenWorkspace opens the workspace as an os.Root. Every artifact resolves its
+// in and out paths through it, and so does the sidecar's own bookkeeping, so a
+// path can only ever name something inside the workspace: a symlink whose target leaves it fails instead of being
 // followed, and so does an absolute target, which the root refuses even when
 // it would land back inside. The workspace is shared with the workload, which
 // runs before the post phase and can leave a link anywhere in it — and the
 // sidecar reads and writes as root, with its own secrets in its environment.
-func openWorkspace(basePath string) (*os.Root, error) {
+func OpenWorkspace(basePath string) (*os.Root, error) {
 	if err := os.MkdirAll(basePath, 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create workspace: %w", err)
 	}

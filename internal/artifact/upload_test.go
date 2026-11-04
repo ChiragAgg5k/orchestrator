@@ -43,7 +43,7 @@ func TestUpload_Apply(t *testing.T) {
 
 	a := &Upload{ID: "test-upload", In: "output.txt", Out: server.URL, Retries: 3}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -67,7 +67,7 @@ func TestUpload_Apply_CustomConfig(t *testing.T) {
 
 	a := &Upload{ID: "ul1", In: "out.txt", Out: server.URL, TimeoutSeconds: 30, Retries: 1}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -90,7 +90,7 @@ func TestUpload_Apply_CustomHeaders(t *testing.T) {
 		"Content-Type":  "text/plain", // must not override the fixed octet-stream type
 	}}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}

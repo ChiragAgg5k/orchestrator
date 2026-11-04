@@ -39,13 +39,7 @@ func (a *Upload) DependsOn() string    { return a.Depends }
 func (a *Upload) SetS3Profiles(p config.S3Profiles) { a.s3 = p }
 
 // Apply uploads a file to a URL with retry.
-func (a *Upload) Apply(ctx context.Context, basePath string) *Result {
-	root, err := openWorkspace(basePath)
-	if err != nil {
-		return &Result{Status: "failed", Error: err}
-	}
-	defer root.Close()
-
+func (a *Upload) Apply(ctx context.Context, root *os.Root) *Result {
 	// A regular file: a FIFO or device the workload left at the path would
 	// otherwise hang the upload or stream without end. doUpload reopens it the
 	// same way for each retry.

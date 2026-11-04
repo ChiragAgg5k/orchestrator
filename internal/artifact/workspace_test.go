@@ -145,7 +145,7 @@ func TestReadersStayInsideWorkspace(t *testing.T) {
 		}
 		for _, a := range artifacts {
 			t.Run(a.ArtifactID()+"/"+name, func(t *testing.T) {
-				result := a.Apply(context.Background(), ws)
+				result := a.Apply(context.Background(), workspace(t, ws))
 				if strings.Contains(stringContent(result.Content), secret) {
 					t.Fatal("Apply() returned the content from outside the workspace")
 				}
@@ -204,7 +204,7 @@ func TestWritersStayInsideWorkspace(t *testing.T) {
 			writeTar(t, filepath.Join(ws, "in.tar"), map[string]string{"file": "archived"})
 			a := build(outside)
 			t.Run(a.ArtifactID()+"/"+rebase(name, outsideNames, "<outside>"), func(t *testing.T) {
-				result := a.Apply(context.Background(), ws)
+				result := a.Apply(context.Background(), workspace(t, ws))
 				// Download renames over a leaf link instead of following it,
 				// which replaces the link inside the workspace.
 				if a.ArtifactID() == "download" && (name == "abs-link" || name == "rel-link") {
@@ -243,7 +243,7 @@ func TestImageExtractionDoesNotFollowLinksInDestination(t *testing.T) {
 	for _, format := range []string{"squashfs", "erofs"} {
 		t.Run(format, func(t *testing.T) {
 			image := "tree." + format
-			if result := (&Archive{ID: "a", In: "tree", Out: image, Format: format}).Apply(context.Background(), ws); result.Status != "success" {
+			if result := (&Archive{ID: "a", In: "tree", Out: image, Format: format}).Apply(context.Background(), workspace(t, ws)); result.Status != "success" {
 				t.Fatalf("Archive() = %v", result.Error)
 			}
 			dest := filepath.Join(ws, "dest-"+format)
@@ -254,7 +254,7 @@ func TestImageExtractionDoesNotFollowLinksInDestination(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			result := (&Unarchive{ID: "u", In: image, Out: "dest-" + format}).Apply(context.Background(), ws)
+			result := (&Unarchive{ID: "u", In: image, Out: "dest-" + format}).Apply(context.Background(), workspace(t, ws))
 			if result.Status != "failed" {
 				t.Errorf("Unarchive() status = %q, want failed", result.Status)
 			}
@@ -267,7 +267,7 @@ func TestImageExtractionDoesNotFollowLinksInDestination(t *testing.T) {
 func TestLinksInsideWorkspaceStillResolve(t *testing.T) {
 	ws, _ := confinedWorkspace(t)
 
-	result := (&Read{ID: "r", In: "in-link"}).Apply(context.Background(), ws)
+	result := (&Read{ID: "r", In: "in-link"}).Apply(context.Background(), workspace(t, ws))
 	if result.Status != "success" || result.Content != "inside" {
 		t.Fatalf("Read(in-link) = %v %v, %v; want the linked file", result.Status, result.Content, result.Error)
 	}
@@ -275,7 +275,7 @@ func TestLinksInsideWorkspaceStillResolve(t *testing.T) {
 	if err := os.Symlink("inside", filepath.Join(ws, "inside-dir-link")); err != nil {
 		t.Fatal(err)
 	}
-	result = (&Write{ID: "w", In: "through", Out: "inside-dir-link/new"}).Apply(context.Background(), ws)
+	result = (&Write{ID: "w", In: "through", Out: "inside-dir-link/new"}).Apply(context.Background(), workspace(t, ws))
 	if result.Status != "success" {
 		t.Fatalf("Write(inside-dir-link/new) = %v", result.Error)
 	}
@@ -327,10 +327,10 @@ func TestReadAndUploadRejectNonRegularFiles(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if r := (&Read{ID: "r", In: "pipe"}).Apply(context.Background(), ws); r.Status != "failed" {
+		if r := (&Read{ID: "r", In: "pipe"}).Apply(context.Background(), workspace(t, ws)); r.Status != "failed" {
 			t.Errorf("Read(pipe) status = %q, want failed", r.Status)
 		}
-		if r := (&Upload{ID: "u", In: "pipe", Out: "http://127.0.0.1:1/x", Retries: 1}).Apply(context.Background(), ws); r.Status != "failed" {
+		if r := (&Upload{ID: "u", In: "pipe", Out: "http://127.0.0.1:1/x", Retries: 1}).Apply(context.Background(), workspace(t, ws)); r.Status != "failed" {
 			t.Errorf("Upload(pipe) status = %q, want failed", r.Status)
 		}
 	}()
@@ -348,14 +348,25 @@ func TestReadRejectsOversizeContent(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws, "big"), make([]byte, maxReadBytes+1), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if r := (&Read{ID: "r", In: "big"}).Apply(context.Background(), ws); r.Status != "failed" {
+	if r := (&Read{ID: "r", In: "big"}).Apply(context.Background(), workspace(t, ws)); r.Status != "failed" {
 		t.Errorf("Read(oversize) status = %q, want failed", r.Status)
 	}
 
 	if err := os.WriteFile(filepath.Join(ws, "ok"), make([]byte, 1024), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if r := (&Read{ID: "r", In: "ok"}).Apply(context.Background(), ws); r.Status != "success" {
+	if r := (&Read{ID: "r", In: "ok"}).Apply(context.Background(), workspace(t, ws)); r.Status != "success" {
 		t.Errorf("Read(small) status = %q, want success", r.Status)
 	}
+}
+
+// workspace opens dir as the root an artifact is applied in.
+func workspace(tb testing.TB, dir string) *os.Root {
+	tb.Helper()
+	root, err := OpenWorkspace(dir)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	tb.Cleanup(func() { root.Close() })
+	return root
 }

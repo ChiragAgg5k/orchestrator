@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 )
 
 // maxReadBytes caps a read artifact. Its content is carried inline in a
@@ -26,13 +27,7 @@ func (a *Read) ArtifactType() string { return "read" }
 func (a *Read) DependsOn() string    { return a.Depends }
 
 // Apply reads file contents for inclusion in a callback event.
-func (a *Read) Apply(ctx context.Context, basePath string) *Result {
-	root, err := openWorkspace(basePath)
-	if err != nil {
-		return &Result{Status: "failed", Error: err}
-	}
-	defer root.Close()
-
+func (a *Read) Apply(ctx context.Context, root *os.Root) *Result {
 	f, info, err := openRegular(root, a.In)
 	if err != nil {
 		return &Result{Status: "failed", Error: fmt.Errorf("failed to read file: %w", err)}

@@ -34,7 +34,7 @@ func TestDownload_Apply(t *testing.T) {
 
 	a := &Download{ID: "test-download", In: server.URL, Out: "subdir/downloaded.txt"}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -61,7 +61,7 @@ func TestDownload_Apply_Error(t *testing.T) {
 
 	a := &Download{ID: "test-download", In: server.URL, Out: "downloaded.txt"}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error == nil {
 		t.Error("Expected error for 404 response")
 	}
@@ -80,7 +80,7 @@ func TestDownload_Apply_CustomTimeout(t *testing.T) {
 
 	a := &Download{ID: "dl1", In: server.URL, Out: "file.txt", TimeoutSeconds: 30}
 
-	result := a.Apply(t.Context(), tmpDir)
+	result := a.Apply(t.Context(), workspace(t, tmpDir))
 	if result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
@@ -95,7 +95,7 @@ func TestDownload_Apply_LeavesNoPartialFile(t *testing.T) {
 
 	tmpDir := t.TempDir()
 	a := &Download{ID: "dl", In: server.URL, Out: "file.bin"}
-	if result := a.Apply(t.Context(), tmpDir); result.Error != nil {
+	if result := a.Apply(t.Context(), workspace(t, tmpDir)); result.Error != nil {
 		t.Fatalf("Apply() error = %v", result.Error)
 	}
 	if _, err := os.Stat(filepath.Join(tmpDir, "file.bin.partial")); err == nil {
@@ -115,7 +115,7 @@ func TestDownload_Apply_RedactsURLCredentialsOnError(t *testing.T) {
 		In:  "http://127.0.0.1:1/source.tar.gz?X-Amz-Signature=deadbeefsecret&token=hunter2",
 		Out: "out.tar.gz",
 	}
-	result := a.Apply(t.Context(), t.TempDir())
+	result := a.Apply(t.Context(), workspace(t, t.TempDir()))
 	if result.Error == nil {
 		t.Fatal("expected a connection error")
 	}

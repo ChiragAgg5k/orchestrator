@@ -235,7 +235,7 @@ func TestMakeWritable_DoesNotFollowSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := makeWritable(root); err != nil {
+	if err := makeWritable(openRoot(t, root), "."); err != nil {
 		t.Fatalf("makeWritable: %v", err)
 	}
 	info, err := os.Stat(outside)
@@ -492,7 +492,7 @@ func TestRunPost_SyncedMount(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(check, "saved.tgz"), saved, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			result := (&artifact.Unarchive{ID: "check", In: "saved.tgz", Out: "restored"}).Apply(t.Context(), check)
+			result := (&artifact.Unarchive{ID: "check", In: "saved.tgz", Out: "restored"}).Apply(t.Context(), openRoot(t, check))
 			if result.Error != nil {
 				t.Fatal(result.Error)
 			}
@@ -506,4 +506,14 @@ func TestRunPost_SyncedMount(t *testing.T) {
 			}
 		})
 	}
+}
+
+func openRoot(t *testing.T, dir string) *os.Root {
+	t.Helper()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { root.Close() })
+	return root
 }

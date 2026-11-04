@@ -460,7 +460,7 @@ func (r *Runner) establishMounts(ctx context.Context, mounts []*artifact.Mount) 
 		start := time.Now()
 		err := r.waitForPath(ctx, image)
 		if err == nil {
-			err = os.MkdirAll(filepath.Join(r.sharedVolumePath, target), 0o755)
+			err = r.inWorkspace(func(ws *os.Root) error { return ws.MkdirAll(target, 0o755) })
 		}
 
 		format, compression := "", ""
@@ -486,7 +486,7 @@ func (r *Runner) establishMounts(ctx context.Context, mounts []*artifact.Mount) 
 				UpperOnDisk: m.Sync != "",
 			})
 			if err != nil && sourceDir {
-				_ = os.RemoveAll(filepath.Join(r.sharedVolumePath, source))
+				_ = r.inWorkspace(func(ws *os.Root) error { return ws.RemoveAll(source) })
 			}
 		}
 		if err != nil {
@@ -507,28 +507,41 @@ func (r *Runner) establishMounts(ctx context.Context, mounts []*artifact.Mount) 
 // up existing entries: overlayfs checks each lower inode's permissions first,
 // and extraction made those inodes root-owned because the sidecar runs as root.
 func (r *Runner) extractTarMountLower(ctx context.Context, m *artifact.Mount, lowerRel string) error {
-	lower := filepath.Join(r.sharedVolumePath, lowerRel)
-	if err := os.RemoveAll(lower); err != nil {
-		return fmt.Errorf("remove stale tar lower directory: %w", err)
-	}
-	if err := os.Mkdir(lower, 0o755); err != nil {
-		return fmt.Errorf("create tar lower directory: %w", err)
-	}
-
-	result := (&artifact.Unarchive{In: m.In, Out: lowerRel}).Apply(ctx, r.sharedVolumePath)
-	if result.Error != nil {
-		_ = os.RemoveAll(lower)
-		return result.Error
-	}
-	if m.Writable {
-		// Open the extracted tree to the unknown workload uid just like a
-		// restored sync delta and the overlay upper directory.
-		if err := makeWritable(lower); err != nil {
-			_ = os.RemoveAll(lower)
-			return fmt.Errorf("make tar lower writable: %w", err)
+	return r.inWorkspace(func(ws *os.Root) error {
+		if err := ws.RemoveAll(lowerRel); err != nil {
+			return fmt.Errorf("remove stale tar lower directory: %w", err)
 		}
+		if err := ws.Mkdir(lowerRel, 0o755); err != nil {
+			return fmt.Errorf("create tar lower directory: %w", err)
+		}
+
+		result := (&artifact.Unarchive{In: m.In, Out: lowerRel}).Apply(ctx, ws)
+		if result.Error != nil {
+			_ = ws.RemoveAll(lowerRel)
+			return result.Error
+		}
+		if m.Writable {
+			// Open the extracted tree to the unknown workload uid just like a
+			// restored sync delta and the overlay upper directory.
+			if err := makeWritable(ws, lowerRel); err != nil {
+				_ = ws.RemoveAll(lowerRel)
+				return fmt.Errorf("make tar lower writable: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+// inWorkspace runs fn against the workspace opened as a root, so the sidecar's
+// own files there resolve the way artifact paths do: a link the workload left
+// in the shared tree cannot carry a write, removal or chmod out of it.
+func (r *Runner) inWorkspace(fn func(ws *os.Root) error) error {
+	ws, err := artifact.OpenWorkspace(r.sharedVolumePath)
+	if err != nil {
+		return err
 	}
-	return nil
+	defer ws.Close()
+	return fn(ws)
 }
 
 // unmountAll tears down mounts in reverse order. Retain failed cleanup so a
@@ -557,6 +570,12 @@ type s3Configurable interface {
 // artifacts, it waits for files to appear before processing.
 
 func (r *Runner) processArtifacts(ctx context.Context, artifacts []artifact.Artifact, waitForFiles bool) error {
+	ws, err := artifact.OpenWorkspace(r.sharedVolumePath)
+	if err != nil {
+		return err
+	}
+	defer ws.Close()
+
 	return artifact.RunInOrder(ctx, artifacts, func(ctx context.Context, a artifact.Artifact) error {
 		start := time.Now()
 		if c, ok := a.(s3Configurable); ok {
@@ -580,7 +599,7 @@ func (r *Runner) processArtifacts(ctx context.Context, artifacts []artifact.Arti
 			}
 		}
 
-		result := a.Apply(ctx, r.sharedVolumePath)
+		result := a.Apply(ctx, ws)
 		r.emitArtifact(a, *result, start)
 
 		logger := slog.With("artifactId", a.ArtifactID(), "type", a.ArtifactType(), "status", result.Status)

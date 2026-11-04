@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"orchestrator/internal/config"
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -43,13 +44,7 @@ func (a *Download) DependsOn() string    { return a.Depends }
 func (a *Download) SetS3Profiles(p config.S3Profiles) { a.s3 = p }
 
 // Apply downloads a file from a URL.
-func (a *Download) Apply(ctx context.Context, basePath string) *Result {
-	root, err := openWorkspace(basePath)
-	if err != nil {
-		return &Result{Status: "failed", Error: err}
-	}
-	defer root.Close()
-
+func (a *Download) Apply(ctx context.Context, root *os.Root) *Result {
 	if err := root.MkdirAll(filepath.Dir(a.Out), 0o755); err != nil {
 		return &Result{Status: "failed", Error: fmt.Errorf("failed to create directory: %w", err)}
 	}
@@ -104,6 +99,6 @@ func (a *Download) Apply(ctx context.Context, basePath string) *Result {
 		return &Result{Status: "failed", Error: fmt.Errorf("failed to move file into place: %w", err)}
 	}
 
-	slog.Debug("Downloaded file", "bytes", written, "path", filepath.Join(basePath, a.Out))
+	slog.Debug("Downloaded file", "bytes", written, "path", filepath.Join(root.Name(), a.Out))
 	return &Result{Status: "success"}
 }

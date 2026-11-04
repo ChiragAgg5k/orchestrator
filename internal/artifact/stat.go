@@ -3,6 +3,7 @@ package artifact
 import (
 	"context"
 	"fmt"
+	"os"
 )
 
 // Stat reports the size in bytes of a file for inclusion in a callback event.
@@ -17,13 +18,7 @@ func (a *Stat) ArtifactType() string { return "stat" }
 func (a *Stat) DependsOn() string    { return a.Depends }
 
 // Apply reports the file size in bytes.
-func (a *Stat) Apply(ctx context.Context, basePath string) *Result {
-	root, err := openWorkspace(basePath)
-	if err != nil {
-		return &Result{Status: "failed", Error: err}
-	}
-	defer root.Close()
-
+func (a *Stat) Apply(ctx context.Context, root *os.Root) *Result {
 	info, err := root.Stat(a.In)
 	if err != nil {
 		return &Result{Status: "failed", Error: fmt.Errorf("failed to stat file: %w", err)}

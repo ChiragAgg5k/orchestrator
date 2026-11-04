@@ -28,7 +28,7 @@ func (*unknownArtifact) ArtifactType() string { return "unknown" }
 // anything is how a dropped mount looked like a working one.
 func TestMountApply_FailsRatherThanClaimingSuccess(t *testing.T) {
 	t.Parallel()
-	res := (&Mount{ID: "data", In: "data.sqfs", Out: "data"}).Apply(t.Context(), t.TempDir())
+	res := (&Mount{ID: "data", In: "data.sqfs", Out: "data"}).Apply(t.Context(), workspace(t, t.TempDir()))
 	if res.Status != "failed" || res.Error == nil {
 		t.Errorf("got %+v", res)
 	}
