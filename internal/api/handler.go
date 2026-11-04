@@ -14,6 +14,11 @@ import (
 // maxRequestBodySize limits request body to 1MB to prevent memory exhaustion
 const maxRequestBodySize = 1 << 20 // 1 MB
 
+// maxArtifactReportSize bounds a sidecar's artifact report. A read artifact
+// carries up to artifact.MaxReadBytes inline, which JSON can grow sixfold (a
+// control byte becomes \u00XX), plus the report's own fields.
+const maxArtifactReportSize = 6*artifact.MaxReadBytes + maxRequestBodySize
+
 // parseBody reads a size-capped request body through one of the strict Parse
 // functions (job.Parse, deployment.Parse, pool.Parse — the types whose custom
 // UnmarshalJSON hides field names from DisallowUnknownFields). ok=false means
@@ -150,7 +155,7 @@ func (h *Handler) ReportArtifact(w http.ResponseWriter, r *http.Request) {
 	// Deliberately lenient (no unknown-field rejection): the sender is the
 	// job sidecar, which may be a release ahead of or behind this service
 	// during a rolling upgrade.
-	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
+	r.Body = http.MaxBytesReader(w, r.Body, maxArtifactReportSize)
 	var report job.ArtifactReport
 	if err := json.NewDecoder(r.Body).Decode(&report); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid artifact report: "+err.Error())

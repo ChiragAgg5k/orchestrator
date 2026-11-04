@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"orchestrator/internal/apperrors"
+	"orchestrator/internal/artifact"
 	"orchestrator/internal/health"
 	"orchestrator/internal/job"
 	"orchestrator/internal/testutil"
@@ -508,12 +509,30 @@ func TestHandler_ReportArtifact_BodyTooLarge(t *testing.T) {
 	t.Parallel()
 	handler, sent := reportHandler(&job.CallbackDest{URL: "http://callbacks.test/hook"})
 
-	body := []byte(`{"id":"a1","type":"read","status":"success","content":"` + strings.Repeat("x", maxRequestBodySize) + `"}`)
+	body := []byte(`{"id":"a1","type":"read","status":"success","content":"` + strings.Repeat("x", maxArtifactReportSize) + `"}`)
 	if w := postReport(t, handler, "job-123", body); w.Code != http.StatusBadRequest {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
 	}
 	if len(*sent) != 0 {
 		t.Errorf("sent %d callbacks for an oversized report, want none", len(*sent))
+	}
+}
+
+// The largest read a sidecar can make fits in a report, even when every byte
+// of it needs escaping in JSON.
+func TestHandler_ReportArtifact_LargestRead(t *testing.T) {
+	t.Parallel()
+	handler, sent := reportHandler(&job.CallbackDest{URL: "http://callbacks.test/hook"})
+
+	body, err := json.Marshal(job.ArtifactReport{ID: "a1", Type: "read", Status: "success", Content: strings.Repeat("\x01", artifact.MaxReadBytes)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if w := postReport(t, handler, "job-123", body); w.Code != http.StatusAccepted {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusAccepted)
+	}
+	if len(*sent) != 1 {
+		t.Errorf("sent %d callbacks, want 1", len(*sent))
 	}
 }
 

@@ -8,11 +8,11 @@ import (
 	"os"
 )
 
-// maxReadBytes caps a read artifact. Its content is carried inline in a
+// MaxReadBytes caps a read artifact. Its content is carried inline in a
 // callback and buffered in memory on the way; a build writes the file (e.g. a
 // site's manifest.json), so the cap keeps a large or boundless one from
 // exhausting the sidecar and the service that receives the callback.
-const maxReadBytes = 5 << 20
+const MaxReadBytes = 5 << 20
 
 // Read reads file contents for inclusion in a callback event.
 type Read struct {
@@ -34,18 +34,18 @@ func (a *Read) Apply(ctx context.Context, root *os.Root) *Result {
 	}
 	defer f.Close()
 
-	if info.Size() > maxReadBytes {
-		return &Result{Status: "failed", Error: fmt.Errorf("file is %d bytes, over the %d-byte read limit", info.Size(), maxReadBytes)}
+	if info.Size() > MaxReadBytes {
+		return &Result{Status: "failed", Error: fmt.Errorf("file is %d bytes, over the %d-byte read limit", info.Size(), MaxReadBytes)}
 	}
 
 	// LimitReader guards against a file that grows between the stat and the
-	// read; +1 so exactly maxReadBytes is allowed and one more is caught.
-	content, err := io.ReadAll(io.LimitReader(f, maxReadBytes+1))
+	// read; +1 so exactly MaxReadBytes is allowed and one more is caught.
+	content, err := io.ReadAll(io.LimitReader(f, MaxReadBytes+1))
 	if err != nil {
 		return &Result{Status: "failed", Error: fmt.Errorf("failed to read file: %w", err)}
 	}
-	if int64(len(content)) > maxReadBytes {
-		return &Result{Status: "failed", Error: fmt.Errorf("file exceeds the %d-byte read limit", maxReadBytes)}
+	if int64(len(content)) > MaxReadBytes {
+		return &Result{Status: "failed", Error: fmt.Errorf("file exceeds the %d-byte read limit", MaxReadBytes)}
 	}
 
 	if a.Format == "json" {

@@ -345,7 +345,7 @@ func TestReadAndUploadRejectNonRegularFiles(t *testing.T) {
 // buffering into the sidecar and the callback.
 func TestReadRejectsOversizeContent(t *testing.T) {
 	ws := t.TempDir()
-	if err := os.WriteFile(filepath.Join(ws, "big"), make([]byte, maxReadBytes+1), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(ws, "big"), make([]byte, MaxReadBytes+1), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if r := (&Read{ID: "r", In: "big"}).Apply(context.Background(), workspace(t, ws)); r.Status != "failed" {
