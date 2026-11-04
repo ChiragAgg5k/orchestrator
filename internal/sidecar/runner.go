@@ -85,6 +85,7 @@ type Runner struct {
 	emitter          emitter.Emitter[job.ArtifactReport]
 	s3               config.S3Profiles
 	postFileGrace    time.Duration // wait for a post-job artifact's source file
+	holdGrace        time.Duration // how long the hold outlasts the job deadline
 	sync             syncState     // delta sync loops for synced mounts
 }
 
@@ -98,6 +99,7 @@ func NewRunner(jobID, sharedVolumePath string, timeoutSeconds int, opts ...Optio
 		waitFn:           waitForSignal,
 		mounter:          mount.Beneath{Dir: sharedVolumePath},
 		postFileGrace:    defaultPostJobFileGrace,
+		holdGrace:        defaultHoldGrace,
 	}
 	for _, o := range opts {
 		o(r)
@@ -231,17 +233,23 @@ func (r *Runner) Run(ctx context.Context, artifacts []artifact.Artifact) error {
 	// a deadline there would tear the mounts out from under a serving workload.
 	//
 	// The backend enforces the deadline on the worker and signals completion
-	// once the worker is gone, so the hold outlasts the deadline by holdGrace:
-	// it only fires when that signal is lost, and the post phase never starts
-	// against a worker that is still running.
+	// once the worker is gone, so the hold outlasts the deadline by holdGrace
+	// and only expires when that signal is lost — the Docker jobs service was
+	// down, say, and its deadline with it. Nothing then says the worker has
+	// stopped writing, so the post phase is skipped rather than run against it:
+	// the sidecar fails, and the backend fails the job.
 	holdCtx := ctx
 	if r.timeoutSeconds > 0 {
 		var cancelHold context.CancelFunc
-		holdCtx, cancelHold = context.WithTimeout(ctx, r.phaseTimeout()+holdGrace)
+		holdCtx, cancelHold = context.WithTimeout(ctx, r.phaseTimeout()+r.holdGrace)
 		defer cancelHold()
 	}
 	logger.Info("Waiting for worker completion signal")
 	r.waitFn(holdCtx)
+	if errors.Is(holdCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
+		logger.Error("No worker completion signal by the job deadline, skipping post-job artifacts")
+		return errors.Join(errors.New("no worker completion signal by the job deadline"), r.Release())
+	}
 	logger.Info("Received worker completion signal")
 
 	// Detached and bounded, like RunPost: the completion signal may be the
@@ -405,9 +413,9 @@ func (r *Runner) RunPost(ctx context.Context, artifacts []artifact.Artifact) err
 	return nil
 }
 
-// holdGrace is how long the combined-mode hold outlasts the job deadline the
-// backend enforces on the worker.
-const holdGrace = 30 * time.Second
+// defaultHoldGrace is how long the combined-mode hold outlasts the job deadline
+// the backend enforces on the worker.
+const defaultHoldGrace = 30 * time.Second
 
 // phaseTimeout bounds an individual artifact phase (downloads, mounts, the
 // post-job flush). It is the job timeout when the job is bounded; an unbounded

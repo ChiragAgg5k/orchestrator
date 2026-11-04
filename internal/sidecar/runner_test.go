@@ -771,6 +771,28 @@ func TestRunner_HoldDeadline(t *testing.T) {
 	}
 }
 
+// A hold that runs out means the completion signal never came: the backend
+// that enforces the worker deadline may be down, so the worker may still be
+// writing. The post phase must not run against it.
+func TestRunner_HoldDeadlineSkipsPostArtifacts(t *testing.T) {
+	tmpDir := t.TempDir()
+	lostSignal := func(ctx context.Context) { <-ctx.Done() }
+
+	artifacts, err := artifact.UnmarshalArtifacts([]byte(`[{"id":"post","type":"write","in":"x","out":"post.txt","depends":"job"}]`))
+	if err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+
+	runner := NewRunner("test-job", tmpDir, 1, WithSignalFunc(lostSignal), WithMounter(&fakeMounter{}))
+	runner.holdGrace = 0
+	if err := runner.Run(t.Context(), artifacts); err == nil {
+		t.Error("Run() succeeded although the completion signal never came")
+	}
+	if _, err := os.Stat(filepath.Join(tmpDir, "post.txt")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("post-job artifact ran without a completion signal (stat error = %v)", err)
+	}
+}
+
 // TestRunner_RestartAdoptsMounts verifies a restarted combined sidecar
 // recovers in place: the surviving mount is adopted rather than re-established,
 // the stale ready marker is replaced only after adoption, and shutdown still
