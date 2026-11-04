@@ -19,8 +19,8 @@ type ServiceConfig struct {
 	JobSidecarImage   string        // job-sidecar image (job pods + deployments' artifact-pre)
 }
 
-// EnvAllowUnauthenticated is the explicit opt-in for running the Docker
-// backend without an API key, for a local development profile.
+// EnvAllowUnauthenticated is the explicit opt-in for serving the API without a
+// key, for a local development profile.
 const EnvAllowUnauthenticated = "ALLOW_UNAUTHENTICATED"
 
 // LoadServiceConfig loads service configuration from environment variables.
@@ -28,11 +28,17 @@ const EnvAllowUnauthenticated = "ALLOW_UNAUTHENTICATED"
 // The API key comes from API_KEY_FILE, or from API_KEY when no file is named.
 // A named key file that cannot be read, or that holds no key, is an error: the
 // operator asked for authentication, and serving the API open instead is the
-// one outcome that must not happen.
+// one outcome that must not happen. No key at all is an error too unless
+// ALLOW_UNAUTHENTICATED=true opts in: every plane's API runs the image, command
+// and volumes a request names, on the host's daemon or in the namespace, and
+// the key also derives the tokens sidecars report artifacts with.
 func LoadServiceConfig() (*ServiceConfig, error) {
 	apiKey, err := loadAPIKey()
 	if err != nil {
 		return nil, err
+	}
+	if apiKey == "" && GetEnv(EnvAllowUnauthenticated, "") != "true" {
+		return nil, errors.New("no API key: set API_KEY_FILE or API_KEY (or " + EnvAllowUnauthenticated + "=true for a local, unauthenticated profile)")
 	}
 	return &ServiceConfig{
 		Port:              GetEnv("PORT", "8080"),
@@ -56,16 +62,4 @@ func loadAPIKey() (string, error) {
 		return "", fmt.Errorf("API_KEY_FILE %s holds no key", path)
 	}
 	return key, nil
-}
-
-// RequireAPIKey refuses to serve the Docker backend without an API key unless
-// ALLOW_UNAUTHENTICATED=true opts in. Its API starts containers on the host's
-// daemon with the image, command and volumes a request names, so an open API
-// is the host. Other backends keep their own policy (the Helm chart's auth
-// values) and pass.
-func (c *ServiceConfig) RequireAPIKey(backend string) error {
-	if c.APIKey != "" || backend != "docker" || GetEnv(EnvAllowUnauthenticated, "") == "true" {
-		return nil
-	}
-	return errors.New("the Docker backend needs an API key: set API_KEY_FILE or API_KEY (or " + EnvAllowUnauthenticated + "=true for a local, unauthenticated profile)")
 }

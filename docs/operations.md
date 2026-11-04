@@ -53,7 +53,7 @@ kubectl -n orchestrator port-forward svc/orchestrator-jobs 8080:8080 &
 curl localhost:8080/readyz
 ```
 
-To require authentication, put the key in a Secret and name it in `<plane>.auth.existingSecret` (key `<plane>.auth.secretKey`, default `api-key`); the chart mounts it and points `API_KEY_FILE` at it. Requests then need `Authorization: Bearer <key>`. A key file that cannot be read or is empty stops the service at startup. On Kubernetes, **with no key configured, the API is open** — the services log a warning at startup. The Docker backend refuses to start without a key (`API_KEY_FILE` or `API_KEY`) unless `ALLOW_UNAUTHENTICATED=true` is set (the local `docker-compose.yaml` profile does).
+To require authentication, put the key in a Secret and name it in `<plane>.auth.existingSecret` (key `<plane>.auth.secretKey`, default `api-key`); the chart mounts it and points `API_KEY_FILE` at it. Requests then need `Authorization: Bearer <key>`. A key file that cannot be read or is empty stops the service at startup. With no key configured, the services refuse to start: every plane's API runs the image, command and volumes a request names. A local cluster can opt out with `<plane>.auth.allowUnauthenticated: true` (`ALLOW_UNAUTHENTICATED=true` outside the chart, as `docker-compose.yaml`, `task dev` and `hack/dev-values.yaml` do); the API is then open and the services log a warning at startup.
 
 A request's `volumes[].source` names an existing Docker volume or PVC verbatim. Set `ALLOWED_VOLUMES` (comma-separated names) to the volumes workloads may attach; any other source is refused with a 400. Unset, any volume the daemon or namespace holds can be attached by an API caller.
 

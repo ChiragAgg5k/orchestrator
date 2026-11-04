@@ -336,6 +336,10 @@ spec:
             - name: API_KEY_FILE
               value: /var/run/secrets/orchestrator/{{ .auth.secretKey }}
             {{- end }}
+            {{- if and .auth .auth.allowUnauthenticated }}
+            - name: ALLOW_UNAUTHENTICATED
+              value: "true"
+            {{- end }}
             {{- with $root.Values.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

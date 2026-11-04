@@ -34,9 +34,6 @@ func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)).With("service", "deployments", "backend", backend))
 
 	svcCfg, err := config.LoadServiceConfig()
-	if err == nil {
-		err = svcCfg.RequireAPIKey(backend)
-	}
 	if err != nil {
 		slog.Error("Invalid API authentication configuration", "error", err)
 		os.Exit(1)

@@ -21,13 +21,16 @@ func TestLoadServiceConfig_APIKey(t *testing.T) {
 		name    string
 		file    string
 		env     string
+		allow   string
 		want    string
 		wantErr bool
 	}{
 		{name: "file", file: keyFile, want: "from-file"},
 		{name: "file wins over env", file: keyFile, env: "from-env", want: "from-file"},
 		{name: "env", env: " from-env ", want: "from-env"},
-		{name: "none", want: ""},
+		{name: "none", wantErr: true},
+		{name: "none, opted in", allow: "true", want: ""},
+		{name: "none, opt-in misspelt", allow: "1", wantErr: true},
 		{name: "unreadable file", file: filepath.Join(dir, "missing"), wantErr: true},
 		{name: "unreadable file with env", file: filepath.Join(dir, "missing"), env: "from-env", wantErr: true},
 		{name: "empty file", file: emptyFile, wantErr: true},
@@ -36,6 +39,7 @@ func TestLoadServiceConfig_APIKey(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("API_KEY_FILE", tt.file)
 			t.Setenv("API_KEY", tt.env)
+			t.Setenv(EnvAllowUnauthenticated, tt.allow)
 
 			cfg, err := LoadServiceConfig()
 			if tt.wantErr {
@@ -49,31 +53,6 @@ func TestLoadServiceConfig_APIKey(t *testing.T) {
 			}
 			if cfg.APIKey != tt.want {
 				t.Errorf("APIKey = %q, want %q", cfg.APIKey, tt.want)
-			}
-		})
-	}
-}
-
-func TestRequireAPIKey(t *testing.T) {
-	tests := []struct {
-		name    string
-		key     string
-		backend string
-		allow   string
-		wantErr bool
-	}{
-		{name: "docker with key", key: "k", backend: "docker"},
-		{name: "docker without key", backend: "docker", wantErr: true},
-		{name: "docker without key, opted in", backend: "docker", allow: "true"},
-		{name: "docker without key, opt-in misspelt", backend: "docker", allow: "1", wantErr: true},
-		{name: "kubernetes without key", backend: "kubernetes"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv(EnvAllowUnauthenticated, tt.allow)
-			err := (&ServiceConfig{APIKey: tt.key}).RequireAPIKey(tt.backend)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("RequireAPIKey(%q) error = %v, wantErr %v", tt.backend, err, tt.wantErr)
 			}
 		})
 	}

@@ -59,9 +59,6 @@ func main() {
 	}
 
 	svcCfg, err := config.LoadServiceConfig()
-	if err == nil {
-		err = svcCfg.RequireAPIKey("docker")
-	}
 	if err != nil {
 		slog.Error("Invalid API authentication configuration", "error", err)
 		os.Exit(1)
